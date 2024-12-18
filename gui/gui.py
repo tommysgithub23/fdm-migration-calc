@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QMenuBar, QMenu, 
-                               QComboBox, QTableWidget, QTableWidgetItem, QPushButton, QSplitter)
+                               QComboBox, QTableWidget, QTableWidgetItem, QPushButton, QSplitter, QLabel)
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -62,8 +62,8 @@ class MainWindow(QMainWindow):
         self.model_dropdown.currentIndexChanged.connect(self.update_model)
         setup_layout.addWidget(self.model_dropdown)
 
-        model_layout.addWidget(model_label)
-        model
+        model_layout.addWidget(model_lable)
+        # model_layout.addLayout
 
         self.layer_table = QTableWidget()
         self.layer_table.setColumnCount(5)
