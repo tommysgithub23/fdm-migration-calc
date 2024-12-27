@@ -8,7 +8,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Migration Calculation")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 800, 500)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -43,10 +43,15 @@ class MainWindow(QMainWindow):
         sl_geo_layout = self.create_geo_inputs()
         sl_grafical_setup_layout = self.create_grafical_setup()
         
+        # Nesting layout 
+        sl_input_tab_right_layout = QVBoxLayout()
+        
+        sl_input_tab_right_layout.addLayout(sl_geo_layout)
+        sl_input_tab_right_layout.addLayout(sl_grafical_setup_layout)
+
         # Add vertical layouts to the horzontal layout
-        sl_input_tab_layout.addLayout(sl_phy_chem_layout)
-        sl_input_tab_layout.addLayout(sl_geo_layout)
-        sl_input_tab_layout.addLayout(sl_grafical_setup_layout)
+        sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)
+        sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)
         
         sl_input_tab.setLayout(sl_input_tab_layout)
 
@@ -124,12 +129,14 @@ class MainWindow(QMainWindow):
         phy_chem_layout.addLayout(form_layout)
         
         return phy_chem_layout
-        
+            
     def create_geo_inputs(self):
         # Create layout for geometric inputs
         geo_layout = QVBoxLayout()
         form_layout = QFormLayout()
-        form_layout.addRow(QLabel("<b>Geometrische Größen<b>"), QWidget())
+
+        # Add title
+        form_layout.addRow(QLabel("<b>Geometrische Größen</b>"), QWidget())
 
         # Add input fields
         d_P_input = QLineEdit()
@@ -137,26 +144,35 @@ class MainWindow(QMainWindow):
         V_P_input = QLineEdit()
         V_F_input = QLineEdit()
         A_PF_input = QLineEdit()
-        
+
         # Narrow input fields
         for input_field in [d_P_input, d_F_input, V_P_input, V_F_input, A_PF_input]:
             input_field.setMaximumWidth(70)  # Set max width to make fields narrower
 
-        # Add rows with labels, input fields, and units
-        form_layout.addRow(self._create_labeled_row("d<sub>P</sub>", "cm", d_P_input))
-        form_layout.addRow(self._create_labeled_row("d<sub>F</sub>", "cm", d_F_input))
-        form_layout.addRow(self._create_labeled_row("V<sub>P</sub>", "cm³", V_P_input))
-        form_layout.addRow(self._create_labeled_row("V<sub>F</sub>", "cm³", V_F_input))
-        form_layout.addRow(self._create_labeled_row("A<sub>PF</sub>", "dm²", A_PF_input))
+        # Create rows for combined inputs
+        row_1_layout = QHBoxLayout()
+        row_1_layout.addWidget(self._create_labeled_row("d<sub>P</sub>", "cm", d_P_input))
+        row_1_layout.addWidget(self._create_labeled_row("d<sub>F</sub>", "cm", d_F_input))
+
+        row_2_layout = QHBoxLayout()
+        row_2_layout.addWidget(self._create_labeled_row("V<sub>P</sub>", "cm³", V_P_input))
+        row_2_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", V_F_input))
+
+        row_3_widget = self._create_labeled_row("A<sub>PF</sub>", "dm²", A_PF_input)
+
+        # Add rows to the form layout
+        form_layout.addRow(row_1_layout)
+        form_layout.addRow(row_2_layout)
+        form_layout.addRow(row_3_widget)
 
         # Adjust spacing between rows
         form_layout.setVerticalSpacing(3)  # Adjust spacing between rows
 
         # Add form layout to the main layout
         geo_layout.addLayout(form_layout)
-        
 
         return geo_layout
+
         
     def _create_labeled_row(self, label_text, unit_text, input_field):
         # Create a horizontal layout for the row
@@ -185,20 +201,24 @@ class MainWindow(QMainWindow):
     
     def create_grafical_setup(self):
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("<b>Grafische Darstellung der Schichten</b>"))
+        # Create a QLabel for the headline
+        headline_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        headline_label.setAlignment(Qt.AlignLeft)  # Align left like in form layout
+        headline_label.setContentsMargins(0, 0, 0, 0)  # Adjust margins to match the form layout
+        layout.addWidget(headline_label)
 
         # Create QGraphicsView and QGraphicsScene
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setFixedHeight(300)  # Adjust the height as needed
+        self.graphics_view.setFixedHeight(150)  # Adjust the height as needed
 
         # Add initial rectangles to the scene
-        self.d_f_rect = QGraphicsRectItem(0, 0, 100, 50)  # Example initial size for d_f
+        self.d_f_rect = QGraphicsRectItem(0, 0, 100, 100)  # Example initial size for d_f
         self.d_f_rect.setBrush(Qt.blue)  # Set color for d_f layer
         self.graphics_scene.addItem(self.d_f_rect)
 
-        self.d_p_rect = QGraphicsRectItem(0, 50, 100, 100)  # Example initial size for d_p
+        self.d_p_rect = QGraphicsRectItem(-10, 0, 10, 100)  # Example initial size for d_p
         self.d_p_rect.setBrush(Qt.red)  # Set color for d_p layer
         self.graphics_scene.addItem(self.d_p_rect)
 
