@@ -8,7 +8,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Migration Calculation")
-        self.setGeometry(100, 100, 800, 500)
+        self.setGeometry(100, 100, 1000, 600)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -79,7 +79,12 @@ class MainWindow(QMainWindow):
         # Create layout for physical/chemical inputs
         phy_chem_layout = QVBoxLayout()
         form_layout = QFormLayout()
-        form_layout.addRow(QLabel("<b>Physikalische/chemische Größen<b>"), QWidget())
+        
+        # Create a QLabel for the headline
+        headline_label = QLabel("<b>Physikalische/chemische Größen<b>")
+        headline_label.setAlignment(Qt.AlignLeft)  # Align left like in form layout
+        headline_label.setContentsMargins(0, 0, 0, 0)  # Adjust margins to match the form layout
+        phy_chem_layout.addWidget(headline_label)
         
         # Add input fields
         T_C_input = QLineEdit()
@@ -122,8 +127,10 @@ class MainWindow(QMainWindow):
         D_P_row.layout().insertWidget(3, D_P_checkbox)  # Add the checkbox in the row
         form_layout.addRow(D_P_row)
         
+        # Hier weitermachen, itgendwie sind die Margings nicht richtig 
+        
         # Tighten vertical spacing
-        form_layout.setVerticalSpacing(2)  # Minimal spacing
+        form_layout.setVerticalSpacing(0)  # Minimal spacing
         form_layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins
         
         phy_chem_layout.addLayout(form_layout)
@@ -135,9 +142,12 @@ class MainWindow(QMainWindow):
         geo_layout = QVBoxLayout()
         form_layout = QFormLayout()
 
-        # Add title
-        form_layout.addRow(QLabel("<b>Geometrische Größen</b>"), QWidget())
-
+        # Create a QLabel for the headline
+        headline_label = QLabel("<b>Geometrische Größen</b>")
+        headline_label.setAlignment(Qt.AlignLeft)  # Align left like in form layout
+        headline_label.setContentsMargins(0, 0, 0, 0)  # Adjust margins to match the form layout
+        geo_layout.addWidget(headline_label)
+        
         # Add input fields
         d_P_input = QLineEdit()
         d_F_input = QLineEdit()
@@ -212,6 +222,9 @@ class MainWindow(QMainWindow):
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
         self.graphics_view.setFixedHeight(150)  # Adjust the height as needed
+        
+        # Add QGraphicsView aligned to the top right under the headline
+        layout.addWidget(self.graphics_view, Qt.AlignTop | Qt.AlignRight)
 
         # Add initial rectangles to the scene
         self.d_f_rect = QGraphicsRectItem(0, 0, 100, 100)  # Example initial size for d_f
