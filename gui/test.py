@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget, 
-                               QTableWidget, QTableWidgetItem, QHBoxLayout, QFormLayout, QLineEdit, QLabel, QCheckBox, QComboBox, QGraphicsView,QGraphicsScene, QGraphicsRectItem)
+                               QTableWidget, QTableWidgetItem, QHBoxLayout, QFormLayout, QLineEdit, QLabel, QCheckBox, QComboBox, QGraphicsView, QGraphicsScene, QGraphicsRectItem)
 from PySide6.QtCore import Qt
 
 
@@ -77,15 +77,14 @@ class MainWindow(QMainWindow):
     
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
-        phy_chem_layout = QVBoxLayout()
         form_layout = QFormLayout()
-        
+
         # Create a QLabel for the headline
-        headline_label = QLabel("<b>Physikalische/chemische Größen<b>")
-        headline_label.setAlignment(Qt.AlignLeft)  # Align left like in form layout
-        headline_label.setContentsMargins(0, 0, 0, 0)  # Adjust margins to match the form layout
-        phy_chem_layout.addWidget(headline_label)
-        
+        headline_label = QLabel("<b>Physikalische/chemische Größen</b>")
+        headline_label.setAlignment(Qt.AlignLeft)  # Align left like the form layout rows
+        headline_label.setContentsMargins(0, 0, 0, 0)  # Remove any additional margins
+        form_layout.addRow(headline_label)  # Add headline directly to the form layout
+
         # Add input fields
         T_C_input = QLineEdit()
         t_max_input = QLineEdit()
@@ -101,11 +100,7 @@ class MainWindow(QMainWindow):
         # Material dropdown
         material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
         material_dropdown = QComboBox()
-        material_dropdown.addItems(material_list)
-
-        # Configure checkbox behavior
-        D_P_known_input.setEnabled(False)  # Default: disabled
-        D_P_checkbox.stateChanged.connect(lambda state: D_P_known_input.setEnabled(state == Qt.Checked))
+        material_dropdown.addItems(material_list)      
 
         # Narrow input fields
         for input_field in [T_C_input, t_max_input, M_r_input, c_P0_input, P_density_input, F_density_input, D_P_known_input, K_PF_input, dt_input]:
@@ -121,20 +116,28 @@ class MainWindow(QMainWindow):
         form_layout.addRow(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", P_density_input))
         form_layout.addRow(self._create_labeled_row("ρ<sub>F</sub>", "g/cm³", F_density_input))
         form_layout.addRow(self._create_labeled_row("Δt", "s", dt_input))
+
+
+        # FIX: stat change funktioniert nicht
+        # Configure checkbox behavior
+        D_P_known_input.setEnabled(False)  # Default: disabled
+        D_P_checkbox.stateChanged.connect(
+            lambda state: D_P_known_input.setEnabled(state == Qt.Checked)
+            )
         
         # Add checkbox and input field for diffusion coefficient
         D_P_row = self._create_labeled_row("D<sub>P</sub>", "cm²/s", D_P_known_input)
         D_P_row.layout().insertWidget(3, D_P_checkbox)  # Add the checkbox in the row
         form_layout.addRow(D_P_row)
-        
-        # Hier weitermachen, itgendwie sind die Margings nicht richtig 
-        
+
         # Tighten vertical spacing
-        form_layout.setVerticalSpacing(0)  # Minimal spacing
-        form_layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins
-        
+        form_layout.setVerticalSpacing(4)  # Minimal spacing for better alignment
+        form_layout.setContentsMargins(0, 0, 0, 0)  # Reduce overall margins
+
+        # Create a main layout to return
+        phy_chem_layout = QVBoxLayout()
         phy_chem_layout.addLayout(form_layout)
-        
+
         return phy_chem_layout
             
     def create_geo_inputs(self):
@@ -154,6 +157,10 @@ class MainWindow(QMainWindow):
         V_P_input = QLineEdit()
         V_F_input = QLineEdit()
         A_PF_input = QLineEdit()
+        sim_case_dropdown = QComboBox()
+        simulation_case = ["worst","best"]
+        sim_case_dropdown.addItems(simulation_case)
+        sim_case_dropdown.setMaximumWidth(85)
 
         # Narrow input fields
         for input_field in [d_P_input, d_F_input, V_P_input, V_F_input, A_PF_input]:
@@ -168,12 +175,14 @@ class MainWindow(QMainWindow):
         row_2_layout.addWidget(self._create_labeled_row("V<sub>P</sub>", "cm³", V_P_input))
         row_2_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", V_F_input))
 
-        row_3_widget = self._create_labeled_row("A<sub>PF</sub>", "dm²", A_PF_input)
+        row_3_layout = QHBoxLayout()
+        row_3_layout.addWidget(self._create_labeled_row("A<sub>PF</sub>", "dm²", A_PF_input))
+        row_3_layout.addWidget(self._create_labeled_row("Simulation Case", "", sim_case_dropdown))
 
         # Add rows to the form layout
         form_layout.addRow(row_1_layout)
         form_layout.addRow(row_2_layout)
-        form_layout.addRow(row_3_widget)
+        form_layout.addRow(row_3_layout)
 
         # Adjust spacing between rows
         form_layout.setVerticalSpacing(3)  # Adjust spacing between rows
@@ -182,32 +191,6 @@ class MainWindow(QMainWindow):
         geo_layout.addLayout(form_layout)
 
         return geo_layout
-
-        
-    def _create_labeled_row(self, label_text, unit_text, input_field):
-        # Create a horizontal layout for the row
-        row_layout = QHBoxLayout()
-
-        # Create the label with LaTeX-like text
-        label = QLabel(f"<html>{label_text}</html>")
-        label.setMinimumWidth(60)  # Optional: Adjust width for consistent alignment
-
-        # Create the unit label
-        unit_label = QLabel(unit_text)
-
-        # Add widgets to the horizontal layout
-        row_layout.addWidget(label)
-        row_layout.addWidget(input_field)
-        row_layout.addWidget(unit_label)
-
-        # Stretch for spacing (optional)
-        row_layout.addStretch()
-
-        # Return the layout as a QWidget for the form layout
-        row_widget = QWidget()
-        row_widget.setLayout(row_layout)
-
-        return row_widget
     
     def create_grafical_setup(self):
         layout = QVBoxLayout()
@@ -238,7 +221,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.graphics_view)
         return layout
 
-        
+    def _create_labeled_row(self, label_text, unit_text, input_field):
+            # Create a horizontal layout for the row
+            row_layout = QHBoxLayout()
+
+            # Create the label with LaTeX-like text
+            label = QLabel(f"<html>{label_text}</html>")
+            label.setMinimumWidth(60)  # Optional: Adjust width for consistent alignment
+
+            # Create the unit label
+            unit_label = QLabel(unit_text)
+
+            # Add widgets to the horizontal layout
+            row_layout.addWidget(label)
+            row_layout.addWidget(input_field)
+            row_layout.addWidget(unit_label)
+
+            # Stretch for spacing (optional)
+            row_layout.addStretch()
+
+            # Return the layout as a QWidget for the form layout
+            row_widget = QWidget()
+            row_widget.setLayout(row_layout)
+
+            return row_widget        
     
 if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication
