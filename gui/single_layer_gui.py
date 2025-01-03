@@ -1,15 +1,17 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QFormLayout, QLineEdit,
-    QLabel, QCheckBox, QComboBox, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QPushButton, QSpacerItem, QSizePolicy
+    QLabel, QCheckBox, QComboBox, QGraphicsView, QGraphicsScene, QGraphicsRectItem, 
+    QPushButton, QSpacerItem, QSizePolicy, QFileDialog
 )
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import numpy as np
-import os
 from datetime import datetime
 from sl_model_functions import migrationsmodell_piringer, calculate_max_cp0, plot_results_area
+import numpy as np
+import os
+import csv
 
 
 class SingleLayerTab(QWidget):
@@ -67,6 +69,9 @@ class SingleLayerTab(QWidget):
 
         # Tab hinzufügen
         self.sl_sub_tab_widget.addTab(self.calculation_tab, "Berechnung")
+        
+        # Export Button
+        self.add_export_button()
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
@@ -432,4 +437,3 @@ class SingleLayerTab(QWidget):
             row_widget.setLayout(row_layout)
 
             return row_widget
-
