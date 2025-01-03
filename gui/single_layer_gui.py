@@ -355,7 +355,6 @@ class SingleLayerTab(QWidget):
         error_label.setStyleSheet("color: red; font-weight: bold;")
         self.main_layout.addWidget(error_label)
 
-
     def start_calculation(self):
         """Führt die Berechnung basierend auf den Eingaben durch."""
         # Prüft ob Eingaben valide sind
