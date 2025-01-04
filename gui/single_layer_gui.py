@@ -1,17 +1,20 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QFormLayout, QLineEdit,
-    QLabel, QCheckBox, QComboBox, QGraphicsView, QGraphicsScene, QGraphicsRectItem, 
-    QPushButton, QSpacerItem, QSizePolicy, QFileDialog
-)
-from PySide6.QtGui import QPalette, QColor
-from PySide6.QtCore import Qt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from datetime import datetime
-from sl_model_functions import migrationsmodell_piringer, calculate_max_cp0, plot_results_area
-import numpy as np
-import os
 import csv
+import os
+from datetime import datetime
+
+import numpy as np
+from matplotlib.backends.backend_qt5agg import \
+    FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
+                               QGraphicsRectItem, QGraphicsScene,
+                               QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QSizePolicy, QSpacerItem,
+                               QTabWidget, QVBoxLayout, QWidget)
+from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer,
+                                plot_results_area)
 
 
 class SingleLayerTab(QWidget):
@@ -20,7 +23,30 @@ class SingleLayerTab(QWidget):
     """
     def __init__(self):
         super().__init__()
+        
+        # Standardwerte für Initialgrafik
+        self.default_d_P = 0.2  # Schichtdicke für Polymer Initalgrafik
+        self.default_d_F = 2.5  # Schichtdicke für Fluid Initialgrafik
+        
+        # Standarwerte für Farben
+        self.color_init_F = QColor("#64e6df")
+        self.color_init_P = QColor("#f16d1d")
+        
+        self.rect_p = QGraphicsRectItem()  # Rechteck für Polymier
+        self.rect_f = QGraphicsRectItem()  # Rechteck für Fluid
 
+        # Farben für die grafische Darstellung der Schichten (noch anpassen!)
+        self.material_colors = {
+            "LDPE": Qt.green,
+            "LLDPE": Qt.darkGreen,
+            "HDPE": Qt.cyan,
+            "PP": Qt.yellow,
+            "PET": Qt.magenta,
+            "PS": Qt.gray,
+            "PEN": Qt.darkCyan,
+            "HIPS": Qt.darkBlue
+        }
+                
         # Hauptlayout erstellen
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
@@ -28,12 +54,18 @@ class SingleLayerTab(QWidget):
         # Sub-Tab-Widget für Eingabe und Berechnung
         self.sl_sub_tab_widget = QTabWidget()
 
+        # Zentrales Lable für die Fehlermeldung
+        self.error_label = QLabel("")  
+        self.error_label.setStyleSheet("color: red; font-weight: bold;")  
+        self.error_label.setWordWrap(True)  # Falls nötig, kann die Meldung umgebrochen werden
+
         # Tabs hinzufügen
         self.create_input_tab()
         self.create_calculation_tab()
 
         # Sub-Tab-Widget zum Hauptlayout hinzufügen
         self.main_layout.addWidget(self.sl_sub_tab_widget)
+
 
     def create_input_tab(self):
         """Erstellt den Eingabe-Tab mit physikalisch/chemischen und geometrischen Eingaben."""
@@ -70,8 +102,6 @@ class SingleLayerTab(QWidget):
         # Tab hinzufügen
         self.sl_sub_tab_widget.addTab(self.calculation_tab, "Berechnung")
         
-        # Export Button
-        self.add_export_button()
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
@@ -139,6 +169,20 @@ class SingleLayerTab(QWidget):
         # Create a main layout to return
         phy_chem_layout = QVBoxLayout()
         phy_chem_layout.addLayout(form_layout)
+        
+        # Dynamische Validierung für physikalisch-chemische Eingabefelder (Verbindet Feld mit Signal)
+        self.T_C_input.textChanged.connect(lambda: self.validate_field(self.T_C_input, "T_C"))
+        self.t_max_input.textChanged.connect(lambda: self.validate_field(self.t_max_input, "t_max"))
+        self.M_r_input.textChanged.connect(lambda: self.validate_field(self.M_r_input, "M_r"))
+        self.c_P0_input.textChanged.connect(lambda: self.validate_field(self.c_P0_input, "c_P0"))
+        self.P_density_input.textChanged.connect(lambda: self.validate_field(self.P_density_input, "P_density"))
+        self.F_density_input.textChanged.connect(lambda: self.validate_field(self.F_density_input, "F_density"))
+        self.D_P_known_input.textChanged.connect(lambda: self.validate_field(self.D_P_known_input, "D_P_known"))
+        self.K_PF_input.textChanged.connect(lambda: self.validate_field(self.K_PF_input, "K_PF"))
+        self.dt_input.textChanged.connect(lambda: self.validate_field(self.dt_input, "dt"))
+        
+        # Dynamisches Anpassen der Schichtdarstellugn basierend auf Material 
+        self.material_dropdown.currentTextChanged.connect(self.update_graphics)
 
         return phy_chem_layout
 
@@ -201,22 +245,38 @@ class SingleLayerTab(QWidget):
 
         # Add form layout to the main layout
         geo_layout.addLayout(form_layout)
+        
+        # Dynamische Validierung für geometrische Eingabefelder
+        self.d_P_input.textChanged.connect(lambda: self.validate_field(self.d_P_input, "d_P"))
+        self.d_F_input.textChanged.connect(lambda: self.validate_field(self.d_F_input, "d_F"))
+        self.V_P_input.textChanged.connect(lambda: self.validate_field(self.V_P_input, "V_P"))
+        self.V_F_input.textChanged.connect(lambda: self.validate_field(self.V_F_input, "V_F"))
+        self.A_PF_input.textChanged.connect(lambda: self.validate_field(self.A_PF_input, "A_PF"))
+        
+        # Dynamisches Anpassen der Schichtdarstellugn basierend auf Schichtdicke
+        self.d_P_input.textChanged.connect(self.update_graphics)
+        self.d_F_input.textChanged.connect(self.update_graphics)
+
 
         return geo_layout
+    
+    # Hier weitermachen: 
+    # Fehlermeldung, wenn ich A_PF eingebe, dann gibt untenstehende Logik einen Fehler aus. 
+    # Außerdem ändert sich die Schichtbreiet nur dynamisch, wenn ich d_P oder d_F eingebe, nicht aber, wenn ich A_PF und V eingebe
     
     def update_geometric_inputs(self):
         """Aktualisiert d_P, V_P, d_F und V_F dynamisch basierend auf Eingaben."""
         try:
             # Versuche, A_PF auszulesen
-            A_PF = float(self.A_PF_input.text()) if self.A_PF_input.text() else None
+            A_PF = float(self.A_PF_input.text()) if self.A_PF_input.text().strip() else None
 
             # Eingabewerte für d_P und V_P
-            d_P = float(self.d_P_input.text()) if self.d_P_input.text() else None
-            V_P = float(self.V_P_input.text()) if self.V_P_input.text() else None
+            d_P = float(self.d_P_input.text()) if self.d_P_input.text().strip() else self.d_P_input
+            V_P = float(self.V_P_input.text()) if self.V_P_input.text().strip() else None
 
             # Eingabewerte für d_F und V_F
-            d_F = float(self.d_F_input.text()) if self.d_F_input.text() else None
-            V_F = float(self.V_F_input.text()) if self.V_F_input.text() else None
+            d_F = float(self.d_F_input.text()) if self.d_F_input.text().strip() else self.d_P_input
+            V_F = float(self.V_F_input.text()) if self.V_F_input.text().strip() else None
 
             # Berechnungen nur durchführen, wenn A_PF vorhanden ist
             if A_PF is not None:
@@ -286,26 +346,52 @@ class SingleLayerTab(QWidget):
         graphics_scene = QGraphicsScene()
         graphics_view.setScene(graphics_scene)
 
-        # Beispielhafte Rechtecke für Schichten
-        rect_f = QGraphicsRectItem(0, 0, 200, 200)
-        rect_f.setBrush(Qt.blue)
-        graphics_scene.addItem(rect_f)
+        # Rechtecke in der Szene hinzufügen (mit Standardwerten)
+        self.rect_f.setRect(0, 0, self.default_d_F * 40, 200)  # Skalierung *20 für Sichtbarkeit
+        self.rect_f.setBrush(self.color_init_F)
+        graphics_scene.addItem(self.rect_f)
 
-        rect_p = QGraphicsRectItem(-10, 0, 10, 200)
-        rect_p.setBrush(Qt.red)
-        graphics_scene.addItem(rect_p)
+        self.rect_p.setRect(0, 0, self.default_d_P * 40, 200)
+        self.rect_p.setBrush(self.color_init_P)
+        graphics_scene.addItem(self.rect_p)
 
         # Grafikbereich hinzufügen
         layout.addWidget(graphics_view)
+        
+        # Neues Layout für Error-Meldung und Start Button
+        error_button_layout = QHBoxLayout()
+        self.error_label.setFixedHeight(30)
+        error_button_layout.addWidget(self.error_label, 1)
         
         # Button hinzufügen
         start_button = QPushButton("Berechnung starten")
         start_button.setFixedSize(150, 30)  # Button-Größe anpassen
         start_button.clicked.connect(self.start_calculation)  # Signal verbinden
-        layout.addWidget(start_button)
-        layout.setAlignment(start_button, Qt.AlignRight)
+        error_button_layout.addWidget(start_button, 0)
+
+        layout.addLayout(error_button_layout)
         
         return layout
+
+    def update_graphics(self):
+        """Aktualisiert die Breite und Farbe der Rechtecke basierend auf Eingaben."""
+        try:
+            # Werte für d_P und d_F abrufen
+            d_P = float(self.d_P_input.text()) if self.d_P_input.text() else self.default_d_P
+            d_F = float(self.d_F_input.text()) if self.d_F_input.text() else self.default_d_F
+
+            # Breite der Rechtecke anpassen
+            self.rect_p.setRect(0, 0, d_P * 40, 200)  # Skalierung mit 20 für bessere Sichtbarkeit
+            self.rect_f.setRect(d_P * 20, 0, d_F * 40, 200)
+
+            # Farbe des linken Rechtecks basierend auf Material
+            material = self.material_dropdown.currentText()
+            color = self.material_colors.get(material, Qt.red)  # Fallback zu Rot
+            self.rect_p.setBrush(color)
+
+        except ValueError:
+            pass  # Überspringe ungültige Werte
+
 
     def validate_inputs(self):
         """Überprüft die Eingaben und markiert fehlerhafte Felder."""
@@ -330,18 +416,33 @@ class SingleLayerTab(QWidget):
         }
 
         for field_name, field in all_fields.items():
-            if not self.is_valid_number(field.text()):
+            if not self.is_valid_number(field.text(), field_name):
                 is_valid = False
                 self.mark_field_invalid(field)
             else:
                 self.mark_field_valid(field)
+                
+        if is_valid: 
+            self.error_label.setText("") # Löscht Fehlermeldung
 
         return is_valid
+    
+    def validate_field(self, field, field_name):
+        """Überprüft ein einzelnes Eingabefeld auf Gültigkeit."""
+        if not self.is_valid_number(field.text(), field_name):
+            self.mark_field_invalid(field)
+        else:
+            self.mark_field_valid(field)
 
-    def is_valid_number(self, value):
+    def is_valid_number(self, value, field_name):
         """Prüft, ob der Wert eine gültige Dezimalzahl ist."""
+        # Sonderfall für D_P: Nur prüfen, wenn Checkbox aktiviert ist
+        if field_name == "D_P_known" and not self.D_P_checkbox.isChecked():
+            return True  # Keine Validierung erforderlich
+        if not value.strip():
+            return False
         try:
-            float(value)
+            float(value.strip())
             return True
         except ValueError:
             return False
@@ -356,9 +457,7 @@ class SingleLayerTab(QWidget):
 
     def show_error_message(self, message):
         """Zeigt eine Fehlermeldung in der GUI an."""
-        error_label = QLabel(message)
-        error_label.setStyleSheet("color: red; font-weight: bold;")
-        self.main_layout.addWidget(error_label)
+        self.error_label.setText(message)  # Setze die Fehlermeldung in das zentrale QLabel
 
     def start_calculation(self):
         """Führt die Berechnung basierend auf den Eingaben durch."""
