@@ -95,7 +95,7 @@ class SingleLayerTab(QWidget):
         calculation_tab_layout = QVBoxLayout(self.calculation_tab)
 
         # Matplotlib Canvas für Plots
-        self.figure = Figure(figsize=(10, 6))
+        self.figure = Figure(figsize=(12, 6))
         self.canvas = FigureCanvas(self.figure)
         calculation_tab_layout.addWidget(self.canvas)
 
@@ -515,9 +515,9 @@ class SingleLayerTab(QWidget):
         
         # Plot der Ergebnisse
         ax.plot(time_days, results_area, linewidth=2, color='#F06D1D')
-        ax.set_xlabel('Zeit $[Tage]$', fontsize=14)
-        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
-        ax.tick_params(axis='both', which='major', labelsize=14)
+        ax.set_xlabel('Zeit $[Tage]$', fontsize=12)
+        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
 
         # Plot aktualisieren
         self.canvas.draw()
@@ -549,7 +549,6 @@ class SingleLayerTab(QWidget):
 
 
 
-
 class ResultsPopup(QWidget):
     def __init__(self, results_area, t_max, dt):
         super().__init__()
@@ -563,49 +562,45 @@ class ResultsPopup(QWidget):
         layout = QVBoxLayout(self)
 
         # Matplotlib-Canvas für Plot
-        self.figure = Figure(figsize=(10, 6))
+        self.figure = Figure(figsize=(12, 6))
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
-
-        # Tabelle für Ergebnisse
-        self.results_table = QTableWidget()
-        self.results_table.setColumnCount(2)
-        self.results_table.setHorizontalHeaderLabels(["Zeit (Tage)", "Migration (mg/dm²)"])
-        layout.addWidget(self.results_table)
 
         # Zusammenfassung
         self.summary_label = QLabel("")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
-        # Export-Button
-        export_button = QPushButton("Ergebnisse exportieren")
-        export_button.clicked.connect(self.export_results)
-        layout.addWidget(export_button)
+        # Layout für Buttons
+        button_layout = QHBoxLayout()
+
+        # Platzhalter für Abstand nach links
+        button_layout.addStretch()
+
+        # Export-Button für Ergebnisse (CSV)
+        export_csv_button = QPushButton("Ergebnisse als CSV exportieren")
+        export_csv_button.setFixedSize(200, 40)  # Größe des Buttons anpassen
+        export_csv_button.clicked.connect(self.export_results)
+        button_layout.addWidget(export_csv_button)
+
+        # Export-Button für Plot (PDF)
+        export_pdf_button = QPushButton("Plot als PDF exportieren")
+        export_pdf_button.setFixedSize(200, 40)  # Größe des Buttons anpassen
+        export_pdf_button.clicked.connect(self.export_plot)
+        button_layout.addWidget(export_pdf_button)
+
+        layout.addLayout(button_layout)
 
         # Daten in die Widgets einfügen
-        self.populate_results()
         self.update_summary()
         self.plot_results()
-
-    def populate_results(self):
-        """Füllt die Tabelle mit den Berechnungsergebnissen."""
-        # Zeit in Tagen berechnen
-        time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
-
-        self.results_table.setRowCount(len(self.results_area))
-        for i, (time, result) in enumerate(zip(time_days, self.results_area)):
-            self.results_table.setItem(i, 0, QTableWidgetItem(f"{time:.2f}"))
-            self.results_table.setItem(i, 1, QTableWidgetItem(f"{result:.2f}"))
 
     def update_summary(self):
         """Zeigt eine Zusammenfassung der Ergebnisse."""
         max_migration = max(self.results_area)
-        avg_migration = sum(self.results_area) / len(self.results_area)
         summary = f"""
         <b>Zusammenfassung:</b><br>
         Maximale Migration: {max_migration:.2f} mg/dm²<br>
-        Durchschnittliche Migration: {avg_migration:.2f} mg/dm²<br>
         Simulierte Zeit: {self.t_max / (3600 * 24):.2f} Tage
         """
         self.summary_label.setText(summary)
@@ -614,12 +609,15 @@ class ResultsPopup(QWidget):
         """Erstellt den Plot der Berechnungsergebnisse."""
         time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
 
+        # Adjust plot position and margins
+        # self.figure.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
+
         ax = self.figure.add_subplot(111)
         ax.clear()
         ax.plot(time_days, self.results_area, linewidth=2, color='#F06D1D')
-        ax.set_xlabel('Zeit $[Tage]$', fontsize=14)
-        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
-        ax.tick_params(axis='both', which='major', labelsize=14)
+        ax.set_xlabel('Zeit $[Tage]$', fontsize=12)
+        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=12)
         self.canvas.draw()
 
     def export_results(self):
@@ -632,3 +630,9 @@ class ResultsPopup(QWidget):
                 time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
                 for time, result in zip(time_days, self.results_area):
                     writer.writerow([time, result])
+
+    def export_plot(self):
+        """Exportiert den Plot als PDF-Datei."""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Plot als PDF exportieren", "", "PDF-Dateien (*.pdf)")
+        if file_path:
+            self.figure.savefig(file_path, format="pdf")
