@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
-                               QTabWidget, QVBoxLayout, QWidget)
+                               QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
 from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer,
                                 plot_results_area)
 
@@ -100,7 +100,7 @@ class SingleLayerTab(QWidget):
         calculation_tab_layout.addWidget(self.canvas)
 
         # Tab hinzufügen
-        self.sl_sub_tab_widget.addTab(self.calculation_tab, "Berechnung")
+        self.sl_sub_tab_widget.addTab(self.calculation_tab, "Ausgabe")
         
 
     def create_phy_chem_inputs(self):
@@ -114,16 +114,16 @@ class SingleLayerTab(QWidget):
         form_layout.addRow(headline_label)  # Add headline directly to the form layout
 
         # Add input fields
-        self.T_C_input = QLineEdit()
-        self.t_max_input = QLineEdit()
-        self.M_r_input = QLineEdit()
-        self.c_P0_input = QLineEdit()
-        self.P_density_input = QLineEdit()
-        self.F_density_input = QLineEdit()
+        self.T_C_input = QLineEdit("25")
+        self.t_max_input = QLineEdit("1000")
+        self.M_r_input = QLineEdit("136")
+        self.c_P0_input = QLineEdit("100")
+        self.P_density_input = QLineEdit("1")
+        self.F_density_input = QLineEdit("1")
         self.D_P_known_input = QLineEdit()
         self.D_P_checkbox = QCheckBox("Bekannt")  # Checkbox to toggle D_P_known_input
-        self.K_PF_input = QLineEdit()
-        self.dt_input = QLineEdit()
+        self.K_PF_input = QLineEdit("1")
+        self.dt_input = QLineEdit("1")
 
         # Material dropdown
         material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
@@ -198,11 +198,11 @@ class SingleLayerTab(QWidget):
         geo_layout.addWidget(headline_label)
         
         # Add input fields
-        self.d_P_input = QLineEdit()
-        self.d_F_input = QLineEdit()
-        self.V_P_input = QLineEdit()
-        self.V_F_input = QLineEdit()
-        self.A_PF_input = QLineEdit()
+        self.d_P_input = QLineEdit("0.2")
+        self.d_F_input = QLineEdit("2")
+        self.V_P_input = QLineEdit("1.2")
+        self.V_F_input = QLineEdit("12")
+        self.A_PF_input = QLineEdit("6")
         
         # Signale verbinden, damit sich die Felder automatisch ausfüllen
         self.d_P_input.textChanged.connect(self.update_geometric_inputs)
@@ -210,7 +210,6 @@ class SingleLayerTab(QWidget):
         self.d_F_input.textChanged.connect(self.update_geometric_inputs)
         self.V_F_input.textChanged.connect(self.update_geometric_inputs)
         self.A_PF_input.textChanged.connect(self.update_geometric_inputs)
-        
         
         self.sim_case_dropdown = QComboBox()
         simulation_case = ["worst","best"]
@@ -234,7 +233,6 @@ class SingleLayerTab(QWidget):
         row_3_layout.addWidget(self._create_labeled_row("V<sub>P</sub>", "cm³", self.V_P_input))
         row_3_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", self.V_F_input))
 
-
         # Add rows to the form layout
         form_layout.addRow(row_1_layout)
         form_layout.addRow(row_2_layout)
@@ -254,83 +252,82 @@ class SingleLayerTab(QWidget):
         self.A_PF_input.textChanged.connect(lambda: self.validate_field(self.A_PF_input, "A_PF"))
         
         # Dynamisches Anpassen der Schichtdarstellugn basierend auf Schichtdicke
-        self.d_P_input.textChanged.connect(self.update_graphics)
-        self.d_F_input.textChanged.connect(self.update_graphics)
-
+        self.d_P_input.textChanged.connect(self.update_geometric_inputs)
+        self.V_P_input.textChanged.connect(self.update_geometric_inputs)
+        self.d_F_input.textChanged.connect(self.update_geometric_inputs)
+        self.V_F_input.textChanged.connect(self.update_geometric_inputs)
+        self.A_PF_input.textChanged.connect(self.update_geometric_inputs)
 
         return geo_layout
-    
-    # Hier weitermachen: 
-    # Fehlermeldung, wenn ich A_PF eingebe, dann gibt untenstehende Logik einen Fehler aus. 
-    # Außerdem ändert sich die Schichtbreiet nur dynamisch, wenn ich d_P oder d_F eingebe, nicht aber, wenn ich A_PF und V eingebe
     
     def update_geometric_inputs(self):
         """Aktualisiert d_P, V_P, d_F und V_F dynamisch basierend auf Eingaben."""
         try:
-            # Versuche, A_PF auszulesen
+            # Eingabewerte abrufen
             A_PF = float(self.A_PF_input.text()) if self.A_PF_input.text().strip() else None
-
-            # Eingabewerte für d_P und V_P
-            d_P = float(self.d_P_input.text()) if self.d_P_input.text().strip() else self.d_P_input
+            d_P = float(self.d_P_input.text()) if self.d_P_input.text().strip() else None
             V_P = float(self.V_P_input.text()) if self.V_P_input.text().strip() else None
-
-            # Eingabewerte für d_F und V_F
-            d_F = float(self.d_F_input.text()) if self.d_F_input.text().strip() else self.d_P_input
+            d_F = float(self.d_F_input.text()) if self.d_F_input.text().strip() else None
             V_F = float(self.V_F_input.text()) if self.V_F_input.text().strip() else None
 
-            # Berechnungen nur durchführen, wenn A_PF vorhanden ist
-            if A_PF is not None:
-                # Berechnung für d_P und V_P
-                if self.sender() == self.d_P_input and d_P is not None:
+            sender = self.sender()  # Das Feld, das das Signal ausgelöst hat
+
+            if sender == self.A_PF_input and A_PF is not None:
+                # Aktualisiere d_P und V_P basierend auf A_PF
+                if d_P is not None:
                     V_P = A_PF * d_P
                     self.V_P_input.blockSignals(True)
-                    self.V_P_input.setText(f"{V_P:.4f}")
+                    self.V_P_input.setText(f"{V_P:.2f}")
                     self.V_P_input.blockSignals(False)
-                elif self.sender() == self.V_P_input and V_P is not None:
+                elif V_P is not None:
                     d_P = V_P / A_PF
                     self.d_P_input.blockSignals(True)
-                    self.d_P_input.setText(f"{d_P:.4f}")
+                    self.d_P_input.setText(f"{d_P:.2f}")
                     self.d_P_input.blockSignals(False)
-                elif self.sender() == self.A_PF_input:
-                    # A_PF wurde geändert, überprüfe und berechne neu
-                    if d_P is not None:
-                        V_P = A_PF * d_P
-                        self.V_P_input.blockSignals(True)
-                        self.V_P_input.setText(f"{V_P:.4f}")
-                        self.V_P_input.blockSignals(False)
-                    elif V_P is not None:
-                        d_P = V_P / A_PF
-                        self.d_P_input.blockSignals(True)
-                        self.d_P_input.setText(f"{d_P:.4f}")
-                        self.d_P_input.blockSignals(False)
 
-                # Berechnung für d_F und V_F
-                if self.sender() == self.d_F_input and d_F is not None:
+                # Aktualisiere d_F und V_F basierend auf A_PF
+                if d_F is not None:
                     V_F = A_PF * d_F
                     self.V_F_input.blockSignals(True)
-                    self.V_F_input.setText(f"{V_F:.4f}")
+                    self.V_F_input.setText(f"{V_F:.2f}")
                     self.V_F_input.blockSignals(False)
-                elif self.sender() == self.V_F_input and V_F is not None:
+                elif V_F is not None:
                     d_F = V_F / A_PF
                     self.d_F_input.blockSignals(True)
-                    self.d_F_input.setText(f"{d_F:.4f}")
+                    self.d_F_input.setText(f"{d_F:.2f}")
                     self.d_F_input.blockSignals(False)
-                elif self.sender() == self.A_PF_input:
-                    # A_PF wurde geändert, überprüfe und berechne neu
-                    if d_F is not None:
-                        V_F = A_PF * d_F
-                        self.V_F_input.blockSignals(True)
-                        self.V_F_input.setText(f"{V_F:.4f}")
-                        self.V_F_input.blockSignals(False)
-                    elif V_F is not None:
-                        d_F = V_F / A_PF
-                        self.d_F_input.blockSignals(True)
-                        self.d_F_input.setText(f"{d_F:.4f}")
-                        self.d_F_input.blockSignals(False)
+
+            elif sender == self.d_P_input and d_P is not None and A_PF is not None:
+                V_P = A_PF * d_P
+                self.V_P_input.blockSignals(True)
+                self.V_P_input.setText(f"{V_P:.2f}")
+                self.V_P_input.blockSignals(False)
+
+            elif sender == self.V_P_input and V_P is not None and A_PF is not None:
+                d_P = V_P / A_PF
+                self.d_P_input.blockSignals(True)
+                self.d_P_input.setText(f"{d_P:.2f}")
+                self.d_P_input.blockSignals(False)
+
+            elif sender == self.d_F_input and d_F is not None and A_PF is not None:
+                V_F = A_PF * d_F
+                self.V_F_input.blockSignals(True)
+                self.V_F_input.setText(f"{V_F:.2f}")
+                self.V_F_input.blockSignals(False)
+
+            elif sender == self.V_F_input and V_F is not None and A_PF is not None:
+                d_F = V_F / A_PF
+                self.d_F_input.blockSignals(True)
+                self.d_F_input.setText(f"{d_F:.2f}")
+                self.d_F_input.blockSignals(False)
+
+            # Aktualisiere die grafische Darstellung
+            self.update_graphics()
 
         except ValueError:
-            # Wenn ein Wert ungültig ist, überspringe die Berechnung
+            # Überspringe Berechnungen, wenn ungültige Werte vorhanden sind
             pass
+
 
     def create_grafical_setup(self):
         """Erstellt den Bereich für die grafische Darstellung."""
@@ -380,9 +377,20 @@ class SingleLayerTab(QWidget):
             d_P = float(self.d_P_input.text()) if self.d_P_input.text() else self.default_d_P
             d_F = float(self.d_F_input.text()) if self.d_F_input.text() else self.default_d_F
 
-            # Breite der Rechtecke anpassen
-            self.rect_p.setRect(0, 0, d_P * 40, 200)  # Skalierung mit 20 für bessere Sichtbarkeit
-            self.rect_f.setRect(d_P * 20, 0, d_F * 40, 200)
+            # Begrenzung der Maximalbreite
+            max_width = 400
+            total_width = d_P + d_F
+            scaling_factor = min(40, max_width / total_width)
+
+            # Rechteckbreite berechnen
+            width_p = d_P * scaling_factor
+            width_f = d_F * scaling_factor
+            total_scaled_width = width_p + width_f
+
+            # Zentrierung der Rechtecke
+            offset = (max_width - total_scaled_width) / 2
+            self.rect_p.setRect(offset, 0, width_p, 200)
+            self.rect_f.setRect(offset + width_p, 0, width_f, 200)
 
             # Farbe des linken Rechtecks basierend auf Material
             material = self.material_dropdown.currentText()
@@ -493,7 +501,9 @@ class SingleLayerTab(QWidget):
         # Berechnung der spez. Migrationsmenge
         results_area = migrationsmodell_piringer(M_r, T_C, c_P0, Material, P_density, F_density, K_PF, t_max, V_P, V_F, d_P, d_F, A_PF, dt, D_P_known, simulation_case)
 
-        self.plot_results_area(results_area, t_max, dt)
+        # Popup-Fenster öffnen
+        self.results_popup = ResultsPopup(results_area, t_max, dt)
+        self.results_popup.show()
 
     def plot_results_area(self, results_area, t_max, dt):
         """Zeigt die berechneten Ergebnisse im Berechnungs-Tab als Plot an."""
@@ -536,3 +546,89 @@ class SingleLayerTab(QWidget):
             row_widget.setLayout(row_layout)
 
             return row_widget
+
+
+
+
+class ResultsPopup(QWidget):
+    def __init__(self, results_area, t_max, dt):
+        super().__init__()
+        self.setWindowTitle("Berechnungsergebnisse")
+        self.setGeometry(100, 100, 800, 600)  # Fenstergröße setzen
+
+        self.results_area = results_area
+        self.t_max = t_max
+        self.dt = dt
+
+        layout = QVBoxLayout(self)
+
+        # Matplotlib-Canvas für Plot
+        self.figure = Figure(figsize=(10, 6))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+
+        # Tabelle für Ergebnisse
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(2)
+        self.results_table.setHorizontalHeaderLabels(["Zeit (Tage)", "Migration (mg/dm²)"])
+        layout.addWidget(self.results_table)
+
+        # Zusammenfassung
+        self.summary_label = QLabel("")
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        # Export-Button
+        export_button = QPushButton("Ergebnisse exportieren")
+        export_button.clicked.connect(self.export_results)
+        layout.addWidget(export_button)
+
+        # Daten in die Widgets einfügen
+        self.populate_results()
+        self.update_summary()
+        self.plot_results()
+
+    def populate_results(self):
+        """Füllt die Tabelle mit den Berechnungsergebnissen."""
+        # Zeit in Tagen berechnen
+        time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
+
+        self.results_table.setRowCount(len(self.results_area))
+        for i, (time, result) in enumerate(zip(time_days, self.results_area)):
+            self.results_table.setItem(i, 0, QTableWidgetItem(f"{time:.2f}"))
+            self.results_table.setItem(i, 1, QTableWidgetItem(f"{result:.2f}"))
+
+    def update_summary(self):
+        """Zeigt eine Zusammenfassung der Ergebnisse."""
+        max_migration = max(self.results_area)
+        avg_migration = sum(self.results_area) / len(self.results_area)
+        summary = f"""
+        <b>Zusammenfassung:</b><br>
+        Maximale Migration: {max_migration:.2f} mg/dm²<br>
+        Durchschnittliche Migration: {avg_migration:.2f} mg/dm²<br>
+        Simulierte Zeit: {self.t_max / (3600 * 24):.2f} Tage
+        """
+        self.summary_label.setText(summary)
+
+    def plot_results(self):
+        """Erstellt den Plot der Berechnungsergebnisse."""
+        time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
+
+        ax = self.figure.add_subplot(111)
+        ax.clear()
+        ax.plot(time_days, self.results_area, linewidth=2, color='#F06D1D')
+        ax.set_xlabel('Zeit $[Tage]$', fontsize=14)
+        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
+        ax.tick_params(axis='both', which='major', labelsize=14)
+        self.canvas.draw()
+
+    def export_results(self):
+        """Exportiert die Ergebnisse als CSV-Datei."""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Ergebnisse exportieren", "", "CSV-Dateien (*.csv)")
+        if file_path:
+            with open(file_path, "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Zeit (Tage)", "Migration (mg/dm²)"])
+                time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
+                for time, result in zip(time_days, self.results_area):
+                    writer.writerow([time, result])
