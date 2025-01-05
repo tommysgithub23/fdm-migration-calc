@@ -3,8 +3,7 @@ import os
 from datetime import datetime
 
 import numpy as np
-from matplotlib.backends.backend_qt5agg import \
-    FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
@@ -13,8 +12,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
                                QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
-from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer,
-                                plot_results_area)
+from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer)
 
 
 class SingleLayerTab(QWidget):
@@ -61,7 +59,6 @@ class SingleLayerTab(QWidget):
 
         # Tabs hinzufügen
         self.create_input_tab()
-        self.create_calculation_tab()
 
         # Sub-Tab-Widget zum Hauptlayout hinzufügen
         self.main_layout.addWidget(self.sl_sub_tab_widget)
@@ -87,21 +84,7 @@ class SingleLayerTab(QWidget):
         sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)
 
         # Tab hinzufügen
-        self.sl_sub_tab_widget.addTab(sl_input_tab, "Eingabe")
-
-    def create_calculation_tab(self):
-        """Erstellt den Berechnungs-Tab mit Ergebnissen."""
-        self.calculation_tab = QWidget()
-        calculation_tab_layout = QVBoxLayout(self.calculation_tab)
-
-        # Matplotlib Canvas für Plots
-        self.figure = Figure(figsize=(12, 6))
-        self.canvas = FigureCanvas(self.figure)
-        calculation_tab_layout.addWidget(self.canvas)
-
-        # Tab hinzufügen
-        self.sl_sub_tab_widget.addTab(self.calculation_tab, "Ausgabe")
-        
+        self.sl_sub_tab_widget.addTab(sl_input_tab, "Eingabe")    
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
@@ -201,7 +184,7 @@ class SingleLayerTab(QWidget):
         self.d_P_input = QLineEdit("0.2")
         self.d_F_input = QLineEdit("2")
         self.V_P_input = QLineEdit("1.2")
-        self.V_F_input = QLineEdit("12")
+        self.V_F_input = QLineEdit("11")
         self.A_PF_input = QLineEdit("6")
         
         # Signale verbinden, damit sich die Felder automatisch ausfüllen
@@ -505,23 +488,6 @@ class SingleLayerTab(QWidget):
         self.results_popup = ResultsPopup(results_area, t_max, dt)
         self.results_popup.show()
 
-    def plot_results_area(self, results_area, t_max, dt):
-        """Zeigt die berechneten Ergebnisse im Berechnungs-Tab als Plot an."""
-        self.figure.clear()  # Leere das aktuelle Plot-Fenster
-        ax = self.figure.add_subplot(111)
-
-        # Zeit in Tagen berechnen
-        time_days = np.arange(0, t_max / (3600 * 24), dt / (3600 * 24))
-        
-        # Plot der Ergebnisse
-        ax.plot(time_days, results_area, linewidth=2, color='#F06D1D')
-        ax.set_xlabel('Zeit $[Tage]$', fontsize=12)
-        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=12)
-        ax.tick_params(axis='both', which='major', labelsize=12)
-
-        # Plot aktualisieren
-        self.canvas.draw()
-
     def _create_labeled_row(self, label_text, unit_text, input_field):
             # Create a horizontal layout for the row
             row_layout = QHBoxLayout()
@@ -548,7 +514,6 @@ class SingleLayerTab(QWidget):
             return row_widget
 
 
-
 class ResultsPopup(QWidget):
     def __init__(self, results_area, t_max, dt):
         super().__init__()
@@ -562,7 +527,7 @@ class ResultsPopup(QWidget):
         layout = QVBoxLayout(self)
 
         # Matplotlib-Canvas für Plot
-        self.figure = Figure(figsize=(12, 6))
+        self.figure = Figure(figsize=(11, 6))
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
 
@@ -593,7 +558,7 @@ class ResultsPopup(QWidget):
 
         # Daten in die Widgets einfügen
         self.update_summary()
-        self.plot_results()
+        self.plot_results_area()
 
     def update_summary(self):
         """Zeigt eine Zusammenfassung der Ergebnisse."""
@@ -605,9 +570,9 @@ class ResultsPopup(QWidget):
         """
         self.summary_label.setText(summary)
 
-    def plot_results(self):
+    def plot_results_area(self):
         """Erstellt den Plot der Berechnungsergebnisse."""
-        time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
+        time_days = np.linspace(0, self.t_max / (3600 * 24), len(self.results_area))
 
         # Adjust plot position and margins
         # self.figure.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
@@ -615,9 +580,9 @@ class ResultsPopup(QWidget):
         ax = self.figure.add_subplot(111)
         ax.clear()
         ax.plot(time_days, self.results_area, linewidth=2, color='#F06D1D')
-        ax.set_xlabel('Zeit $[Tage]$', fontsize=12)
-        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=12)
-        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.set_xlabel('Zeit $[Tage]$', fontsize=11)
+        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=11)
+        ax.tick_params(axis='both', which='major', labelsize=11)
         self.canvas.draw()
 
     def export_results(self):
