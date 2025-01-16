@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout
 from single_layer_gui import SingleLayerTab
-
+from multi_layer_gui import MultiLayerTab
 
 class MainWindow(QMainWindow):
     """
@@ -28,9 +28,13 @@ class MainWindow(QMainWindow):
         self.add_tabs()
 
     def add_tabs(self):
-        """Fügt verschiedene Modelle als Tabs hinzu."""
         # Tab für das Single-Layer-Model
         single_layer_tab = SingleLayerTab()
         self.tab_widget.addTab(single_layer_tab, "Single-Layer Model")
+
+        # Tab für das Multi-Layer-Model
+        multi_layer_tab = MultiLayerTab()
+        self.tab_widget.addTab(multi_layer_tab, "Multi-Layer Model")
+
         
 

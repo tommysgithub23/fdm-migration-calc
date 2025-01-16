@@ -117,6 +117,7 @@ class SingleLayerTab(QWidget):
         for input_field in [self.T_C_input, self.t_max_input, self.M_r_input, self.c_P0_input, 
                             self.P_density_input, self.F_density_input, self.D_P_known_input, self.K_PF_input, self.dt_input]:
             input_field.setMaximumWidth(70)  # Set max width to make fields narrower
+            input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
         
         # First row of the form
         form_layout.addRow(self._create_labeled_row("Material", "", self.material_dropdown))
@@ -187,6 +188,7 @@ class SingleLayerTab(QWidget):
         self.V_F_input = QLineEdit("11")
         self.A_PF_input = QLineEdit("6")
         
+        
         # Signale verbinden, damit sich die Felder automatisch ausfüllen
         self.d_P_input.textChanged.connect(self.update_geometric_inputs)
         self.V_P_input.textChanged.connect(self.update_geometric_inputs)
@@ -202,6 +204,7 @@ class SingleLayerTab(QWidget):
         # Narrow input fields
         for input_field in [self.d_P_input, self.d_F_input, self.V_P_input, self.V_F_input, self.A_PF_input]:
             input_field.setMaximumWidth(70)  # Set max width to make fields narrower
+            input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
 
         # Create rows for combined inputs
         row_1_layout = QHBoxLayout()
