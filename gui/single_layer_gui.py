@@ -19,21 +19,22 @@ class SingleLayerTab(QWidget):
     """
     GUI für das Single-Layer-Model. Organisiert in Tabs für Eingabe und Berechnung.
     """
+
     def __init__(self):
         super().__init__()
-        
+
         # Standardwerte für Initialgrafik
-        self.default_d_P = 0.2  # Schichtdicke für Polymer Initalgrafik
+        self.default_d_P = 0.2  # Schichtdicke für Polymer Initialgrafik
         self.default_d_F = 2.5  # Schichtdicke für Fluid Initialgrafik
-        
-        # Standarwerte für Farben
+
+        # Standardwerte für Farben
         self.color_init_F = QColor("#64e6df")
         self.color_init_P = QColor("#f16d1d")
-        
-        self.rect_p = QGraphicsRectItem()  # Rechteck für Polymier
+
+        self.rect_p = QGraphicsRectItem()  # Rechteck für Polymer
         self.rect_f = QGraphicsRectItem()  # Rechteck für Fluid
 
-        # Farben für die grafische Darstellung der Schichten (noch anpassen!)
+        # Farben für die grafische Darstellung der Schichten
         self.material_colors = {
             "LDPE": Qt.green,
             "LLDPE": Qt.darkGreen,
@@ -44,47 +45,34 @@ class SingleLayerTab(QWidget):
             "PEN": Qt.darkCyan,
             "HIPS": Qt.darkBlue
         }
-                
+
         # Hauptlayout erstellen
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
 
-        # Sub-Tab-Widget für Eingabe und Berechnung
-        self.sl_sub_tab_widget = QTabWidget()
-
-        # Zentrales Lable für die Fehlermeldung
+        # Fehlermeldung und Abstände hinzufügen
         self.error_label = QLabel("")  
-        self.error_label.setStyleSheet("color: red; font-weight: bold;")  
-        self.error_label.setWordWrap(True)  # Falls nötig, kann die Meldung umgebrochen werden
+        self.error_label.setStyleSheet("color: red; font-weight: bold;")
+        self.error_label.setWordWrap(True)
+        self.main_layout.addWidget(self.error_label)
 
-        # Tabs hinzufügen
-        self.create_input_tab()
-
-        # Sub-Tab-Widget zum Hauptlayout hinzufügen
-        self.main_layout.addWidget(self.sl_sub_tab_widget)
-
-
-    def create_input_tab(self):
-        """Erstellt den Eingabe-Tab mit physikalisch/chemischen und geometrischen Eingaben."""
-        sl_input_tab = QWidget()
-        sl_input_tab_layout = QHBoxLayout(sl_input_tab)
-
-        # Physikalisch-chemische und geometrische Eingaben sowie grafische Darstellung
+        # Layouts für physikalisch/chemische Eingaben, geometrische Eingaben und Grafik
         sl_phy_chem_layout = self.create_phy_chem_inputs()
         sl_geo_layout = self.create_geo_inputs()
         sl_graphical_layout = self.create_grafical_setup()
 
-        # Rechte Spalte für Geometrie und Grafik
+        # Layout für die rechte Seite (geometrische Eingaben + Grafik)
         sl_input_tab_right_layout = QVBoxLayout()
         sl_input_tab_right_layout.addLayout(sl_geo_layout)
         sl_input_tab_right_layout.addLayout(sl_graphical_layout)
 
-        # Hinzufügen der Layouts
-        sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)
-        sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)
+        # Hauptlayout horizontal kombinieren (linke und rechte Seite)
+        sl_input_tab_layout = QHBoxLayout()
+        sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
+        sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
 
-        # Tab hinzufügen
-        self.sl_sub_tab_widget.addTab(sl_input_tab, "Eingabe")    
+        # Fertiges Layout hinzufügen
+        self.main_layout.addLayout(sl_input_tab_layout)
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
@@ -325,21 +313,21 @@ class SingleLayerTab(QWidget):
         layout.addWidget(headline_label)
 
         # Grafikbereich
-        graphics_view = QGraphicsView()
-        graphics_scene = QGraphicsScene()
-        graphics_view.setScene(graphics_scene)
+        self.graphics_view = QGraphicsView()
+        self.graphics_scene = QGraphicsScene()
+        self.graphics_view.setScene(self.graphics_scene)
 
         # Rechtecke in der Szene hinzufügen (mit Standardwerten)
         self.rect_f.setRect(0, 0, self.default_d_F * 40, 200)  # Skalierung *20 für Sichtbarkeit
         self.rect_f.setBrush(self.color_init_F)
-        graphics_scene.addItem(self.rect_f)
+        self.graphics_scene.addItem(self.rect_f)
 
         self.rect_p.setRect(0, 0, self.default_d_P * 40, 200)
         self.rect_p.setBrush(self.color_init_P)
-        graphics_scene.addItem(self.rect_p)
+        self.graphics_scene.addItem(self.rect_p)
 
         # Grafikbereich hinzufügen
-        layout.addWidget(graphics_view)
+        layout.addWidget(self.graphics_view)
         
         # Neues Layout für Error-Meldung und Start Button
         error_button_layout = QHBoxLayout()
@@ -357,35 +345,41 @@ class SingleLayerTab(QWidget):
         return layout
 
     def update_graphics(self):
-        """Aktualisiert die Breite und Farbe der Rechtecke basierend auf Eingaben."""
+        """Aktualisiert die Breite, Farbe und Position der Rechtecke basierend auf Eingaben."""
         try:
-            # Werte für d_P und d_F abrufen
+            # Eingabewerte abrufen
             d_P = float(self.d_P_input.text()) if self.d_P_input.text() else self.default_d_P
             d_F = float(self.d_F_input.text()) if self.d_F_input.text() else self.default_d_F
 
-            # Begrenzung der Maximalbreite
-            max_width = 400
-            total_width = d_P + d_F
-            scaling_factor = min(40, max_width / total_width)
-
-            # Rechteckbreite berechnen
+            # Skalierungsfaktor für die Rechteckgröße
+            scaling_factor = 40
             width_p = d_P * scaling_factor
             width_f = d_F * scaling_factor
-            total_scaled_width = width_p + width_f
+            total_width = width_p + width_f
 
-            # Zentrierung der Rechtecke
-            offset = (max_width - total_scaled_width) / 2
-            self.rect_p.setRect(offset, 0, width_p, 200)
-            self.rect_f.setRect(offset + width_p, 0, width_f, 200)
+            # Szenenmitte berechnen
+            scene_width = self.graphics_scene.width()
+            scene_height = self.graphics_scene.height()
 
-            # Farbe des linken Rechtecks basierend auf Material
+            center_x = scene_width / 2
+            center_y = scene_height / 2
+
+            # Berechnung der Startposition für die Rechtecke
+            start_x = center_x - (total_width / 2)  # Zentriere beide Rechtecke horizontal
+            start_y = center_y - 100  # Rechtecke vertikal zentrieren (200 ist die Rechteckhöhe)
+
+            # Rechtecke setzen
+            self.rect_p.setRect(start_x, start_y, width_p, 200)
+            self.rect_f.setRect(start_x + width_p, start_y, width_f, 200)
+
+            # Farbe des Polymers basierend auf Material aktualisieren
             material = self.material_dropdown.currentText()
             color = self.material_colors.get(material, Qt.red)  # Fallback zu Rot
             self.rect_p.setBrush(color)
 
         except ValueError:
-            pass  # Überspringe ungültige Werte
-
+            # Ungültige Eingaben ignorieren
+            pass
 
     def validate_inputs(self):
         """Überprüft die Eingaben und markiert fehlerhafte Felder."""
