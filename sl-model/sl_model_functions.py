@@ -48,7 +48,6 @@ def get_material_data(material, simulation_case="worst"):
 
     raise ValueError("Unbekanntes Material oder Simulation Case")
 
-
 def diffusion_coefficient_Piringer(M_r, T_C, material_params):
     """
     Berechnet den Diffusionskoeffizienten nach dem Piringer-Modell.
@@ -77,7 +76,6 @@ def diffusion_coefficient_Piringer(M_r, T_C, material_params):
         raise ValueError("M_r über 4000 Dalton, andere Berechnung von D_P nötig!")
     
     return D_P
-
 
 def calculate_migration_timestep(D_P, c_t, P_density, F_density, K_PF, t_step, V_P, V_F, d_P, d_F, A_PF):
     """
@@ -165,12 +163,12 @@ def migrationsmodell_piringer(M_r, T_C, c_P0, Material, P_density, F_density, K_
     Rückgabe:
     list: Liste der Migrationsmengen über die Zeit [mg/dm²].
     """
-    material_params = get_material_data(Material, simulation_case)
-
+    
     if D_P_known is not None:
         D_P = D_P_known
 
     else:
+        material_params = get_material_data(Material, simulation_case)
         D_P = diffusion_coefficient_Piringer(M_r, T_C, material_params)
 
     migration_data = []
@@ -184,7 +182,6 @@ def migrationsmodell_piringer(M_r, T_C, c_P0, Material, P_density, F_density, K_
     migration_data = np.array(migration_data) / 10 # Umrechnung in [mg/dm²]
 
     return migration_data
-
 
 def migrationsmodell_piringer_with_temp_profile(M_r, c_P0, Material, P_density, F_density, K_PF, t_max, V_P, V_F, d_P, d_F, A_PF, dt, simulation_case="worst"):
     """
@@ -257,7 +254,6 @@ def calculate_max_cp0(SML, M_r, T_C, Material, P_density, F_density, K_PF, t_max
     
     # Wenn keine Konvergenz erreicht wird
     raise ValueError("Maximale Iterationen erreicht, keine Lösung gefunden")
-
 
 def plot_results_area(results_area, t_max, dt, save_path=None): 
     # Plot the area-specific migration results
