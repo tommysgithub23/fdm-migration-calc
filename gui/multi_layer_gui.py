@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
-    QLabel, QFormLayout, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene, QSizePolicy, QSpacerItem
+    QLabel, QFormLayout, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene, QSizePolicy, QSpacerItem, QComboBox, QTableWidgetItem
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon
@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor, QIcon
 class MultiLayerTab(QWidget):
     def __init__(self):
         super().__init__()
+        self.material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
 
         # Hauptlayout
         self.main_layout = QVBoxLayout(self)
@@ -90,6 +91,10 @@ class MultiLayerTab(QWidget):
         self.error_label.setStyleSheet("color: red;")
         self.main_layout.addWidget(self.error_label)
 
+        # Tabelle mit zwei Spalten als Start vorbereiten
+        self.add_layer()
+        self.add_layer()
+
     def _create_labeled_row(self, label_text, unit_text, input_field):
         """Erstellt ein QWidget mit einem QHBoxLayout, das Label, Eingabefeld und Einheit enthält."""
         row_layout = QHBoxLayout()
@@ -122,16 +127,28 @@ class MultiLayerTab(QWidget):
 
         return row_widget
 
-
     def add_layer(self):
         """Fügt eine neue Schicht hinzu."""
         row_count = self.layer_table.rowCount()
         self.layer_table.insertRow(row_count)
-        default_values = ["", "0.0", "10", "1.0", "0.0"]
-        for col, value in enumerate(default_values):
+
+        # --- Spalte 0: Material-Dropdown ---
+        material_dropdown = QComboBox()
+        material_dropdown.addItems(self.material_list)
+        self.layer_table.setCellWidget(row_count, 0, material_dropdown)
+
+        # --- Spalten 1 bis 4: normale Eingabefelder ---
+        default_values = ["0.0", "10", "1.0", "0.0"]
+        for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
             self.layer_table.setItem(row_count, col, item)
+    
+    def get_material_from_row(self, row):
+        widget = self.layer_table.cellWidget(row, 0)
+        if isinstance(widget, QComboBox):
+            return widget.currentText()
+        return None
 
     def remove_layer(self):
         """Entfernt die letzte Schicht."""
