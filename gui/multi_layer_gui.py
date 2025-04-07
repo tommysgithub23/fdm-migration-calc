@@ -240,7 +240,6 @@ class MultiLayerTab(QWidget):
             self.layer_table.removeRow(row_count - 2)  # Entferne oberste Nutzschicht, nicht Kontaktphase
         self.update_graphics()
 
-
     def update_graphics(self):
         self.graphics_scene.clear()
         x_offset = 0
@@ -267,3 +266,5 @@ class MultiLayerTab(QWidget):
             rect.setBrush(color)
             rect.setToolTip(f"{material}: {d} cm")
             x_offset += width
+
+    # def start_calculation(self): 
