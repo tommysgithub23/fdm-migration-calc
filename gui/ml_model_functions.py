@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import os
 from datetime import datetime
+from matplotlib.patches import Patch
 
 class Layer:
     def __init__(self, material, d, nx, K_value=1.0, C_init=0.0, density=1.0, D=None):
@@ -157,13 +158,13 @@ def initialize_concentration(layers, x):
 
     return C_init.copy(), C_init
 
-def initialize_matrices(layers, dt):
+def initialize_matrices(layers, tabler):
     """
     Initialisiert die Koeffizientenmatrizen A und B für das Crank-Nicolson-Verfahren, das zur Lösung der Diffusionsgleichung verwendet wird.
 
     Parameter:
         layers (list von Layer): Liste der Schichtenobjekte.
-        dt (float): Zeitschrittgröße.
+        tabler (float): Zeitschrittgröße.
 
     Rückgabe:
         tuple: Zwei Matrizen (A, B) für das Crank-Nicolson-Verfahren.
@@ -194,7 +195,7 @@ def initialize_matrices(layers, dt):
     B = np.zeros((Nx, Nx))
     
     # Definiere Alpha-Werte für jede Schicht
-    alphas = [D[i] * dt / (2 * dx[i]**2) for i in range(len(D))]
+    alphas = [D[i] * tabler / (2 * dx[i]**2) for i in range(len(D))]
     
     # Auffüllen der Matrizen A und B
     start_idx = 0
@@ -320,14 +321,14 @@ def check_partitioning(layers, C_values):
     
     return partitioning_checks
 
-def run_simulation(layers, t_max, dt):
+def run_simulation(layers, t_max, tabler):
     """
     Führt die Simulation über die angegebene Zeit durch und gibt die relevanten Daten zurück.
 
     Parameter:
         layers (list von Layer): Liste der Schichtenobjekte.
         t_max (float): Gesamte Simulationszeit in Sekunden.
-        dt (float): Zeitschrittgröße in Sekunden.
+        tabler (float): Zeitschrittgröße in Sekunden.
 
     Rückgabe:
         tuple: 
@@ -340,9 +341,9 @@ def run_simulation(layers, t_max, dt):
     
     x = initialize_grid(layers)
     C_current, C_init = initialize_concentration(layers, x)
-    A, B = initialize_matrices(layers, dt)
+    A, B = initialize_matrices(layers, tabler)
 
-    Nt = int(t_max / dt)
+    Nt = int(t_max / tabler)
     total_masses = []
     C_values = []
     
@@ -362,7 +363,7 @@ def run_simulation(layers, t_max, dt):
 
     return C_values, C_init, total_masses, x, partitioning_checks
 
-def calculate_migrated_mass_over_time(C_values, x, layers, dt, calc_interval):
+def calculate_migrated_mass_over_time(C_values, x, layers, tabler, calc_interval):
     """
     Berechnet die migrierte Masse im letzten Layer über die Zeit.
     
@@ -370,7 +371,7 @@ def calculate_migrated_mass_over_time(C_values, x, layers, dt, calc_interval):
         C_values (list von np.ndarray): Konzentrationsprofile über die Zeit.
         x (np.ndarray): Räumliches Gitter.
         layers (list von Layer): Liste der Schichtobjekte.
-        dt (float): Zeitschrittgröße [s].
+        tabler (float): Zeitschrittgröße [s].
         calc_interval (int): Intervall der Berechnung.
 
     Rückgabe:
@@ -407,118 +408,117 @@ def calculate_migrated_mass_over_time(C_values, x, layers, dt, calc_interval):
         concentration_integrals_over_time.append(concentration_integral_last_layer)
         
         # Berechne und speichere die entsprechende Zeit in Sekunden
-        time_points.append(i * dt)
+        time_points.append(i * tabler)
         
     migrated_mass_over_time = np.array(concentration_integrals_over_time) * (density_last / 10)
     
     return migrated_mass_over_time, time_points
 
-def plot_results(C_values, C_init, x, layers, dt, log_scale=False, steps_to_plot=10, save_path=None):
+def plot_results(C_values, C_init, x, layers, tabler,
+                 log_scale=False, steps_to_plot=10, save_path=None):
     """
     Erstellt einen Plot der Konzentrationsprofile zu verschiedenen Zeitpunkten während der Simulation.
-
-    Parameter:
-        C_values (list von np.ndarray): Liste der Konzentrationsprofile zu verschiedenen Zeitpunkten.
-        C_init (np.ndarray): Initiales Konzentrationsprofil.
-        x (np.ndarray): Räumliches Gitter.
-        layers (list von Layer): Liste der Schichtenobjekte.
-        dt (float): Zeitschrittgröße in Sekunden.
-        log_scale (bool, optional): Ob die Zeitschritte auf logarithmischer Skala gewählt werden sollen.
-        steps_to_plot (int, optional): Anzahl der zu plottenden Zeitschritte.
-        save_path (str, optional): Dateipfad zum Speichern des Plots.
+    Nutzt automatisch tight_layout, damit Legende und Labels nicht abgeschnitten werden.
     """
-    
-    def get_time_label(t, dt):
-        time_in_seconds = t * dt
-        
-        if time_in_seconds < 3600:  # Weniger als 1 Stunde
-            time_label = f't={time_in_seconds:.0f} s'
-        elif time_in_seconds < 3600 * 24:  # Weniger als 24 Stunden
-            time_label = f't={time_in_seconds / 3600:.1f} h'
-        else:  # Mehr als 24 Stunden
-            time_label = f't={time_in_seconds / (3600 * 24):.1f} d'
-        
-        return time_label
-    
+    def get_time_label(t, tabler):
+        s = t * tabler
+        if s < 3600:
+            return f't={s:.0f} s'
+        if s < 3600 * 24:
+            return f't={s/3600:.1f} h'
+        return f't={s/(3600*24):.1f} d'
+
     Nt = len(C_values)
-    # Bestimmen der Zeitpunkte zum Plotten (logarithmisch oder linear)
     if log_scale:
-        time_steps_to_plot = np.unique(np.logspace(0, np.log10(Nt-1), num=steps_to_plot, dtype=int))
-        time_steps_to_plot = np.insert(time_steps_to_plot, 0, 0)
+        ts = np.unique(np.logspace(0, np.log10(Nt-1),
+                                   num=steps_to_plot, dtype=int))
+        time_steps = np.insert(ts, 0, 0)
     else:
-        time_steps_to_plot = np.linspace(0, Nt-1, num=steps_to_plot, dtype=int)
-    
-    # Plot für die Konzentrationsprofile
-    plt.figure(figsize=(10, 6))
+        time_steps = np.linspace(0, Nt-1, num=steps_to_plot, dtype=int).astype(int)
 
-    # Listen zur Speicherung der Zeitlinien für die Legende
+    # --- Hier ändert sich nur diese Zeile ---
+    fig, ax = plt.subplots(figsize=(10, 6), tight_layout=True)
+    # ------------------------------------------------
+
+    # Zeitlinien plotten
     time_lines = []
-    
-    # Plot der Konzentrationsprofile für die bestimmten Zeitpunkte
-    for t in time_steps_to_plot:
-        time_label = get_time_label(t, dt)
+    for t in time_steps:
+        lbl = get_time_label(t, tabler)
         if t == 0:
-            line, = plt.plot(x, C_init, label=f'{time_label}', color='k', linewidth=1.5)
+            ln, = ax.plot(x, C_init, color='k', linewidth=1.5, label=lbl)
         else:
-            C_plot = C_values[t]
-            line, = plt.plot(x, C_plot, label=f'{time_label}', linewidth=1.5)
-        time_lines.append(line)
+            ln, = ax.plot(x, C_values[t], linewidth=1.5, label=lbl)
+        time_lines.append(ln)
 
-    # Layer-Farben
+    # Layer-Flächen einzeichnen
     colors = {
-        'LDPE': '#f16d1d',         
-        'LLDPE': '#f16d1d',         
-        'HDPE': '#32c864',         
-        'PP': '#c832ee',           
-        'PET': '#646464',          
-        'Kontaktphase': '#64e6df', 
-        'PS': '#8c564b',           
-        'PEN': '#e377c2',          
-        'HIPS': '#7f7f7f',         
+        'LDPE': '#f16d1d','LLDPE': '#f16d1d','HDPE': '#32c864',
+        'PP': '#c832ee','PET': '#646464','Kontaktphase': '#64e6df',
+        'PS': '#8c564b','PEN': '#e377c2','HIPS': '#7f7f7f'
     }
-    
-    # Hinzufügen der Layerfarben
-    layer_patches = []
-    start_idx = 0
-    added_labels = set()
-
+    added = set()
+    start_pos = x[0]
+    ymin, ymax = ax.get_ylim()   # aktuelle Achsen-Limits holen
     for layer in layers:
-        end_idx = start_idx + layer.nx
-        x_layer = x[start_idx:end_idx]
-        color = colors[layer.material]
-        
-        # Füge das Label nur hinzu, wenn das Material nicht bereits hinzugefügt wurde
-        if layer.material not in added_labels:
-            patch = plt.fill_between(x_layer, 0, max(C_values[0]), color=color, alpha=0.3, label=layer.material)
-            added_labels.add(layer.material)
-        else:
-            patch = plt.fill_between(x_layer, 0, max(C_values[0]), color=color, alpha=0.3)
+        end_pos = start_pos + layer.d
+        col = colors.get(layer.material, '#cccccc')
+        lbl = layer.material if layer.material not in added else None
+        ax.axvspan(start_pos, end_pos, ymin=0, ymax=1,
+                facecolor=col, alpha=0.3, label=lbl)
+        added.add(layer.material)
+        start_pos = end_pos
 
-        layer_patches.append(patch)
-        start_idx = end_idx
+    # Achsen , Labels
+    ax.set_xlim(x[0], x[-1])
+    ymin, ymax = 0, max(C_values[0]) + 0.1 * max(C_values[0])
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlabel('Position x [cm]', fontsize=14)
+    ax.set_ylabel('Konzentration [mg/kg]', fontsize=14)
+    ax.tick_params(labelsize=12)
 
-    # Achsenbeschriftungen und Formatierung
-    plt.xlim(x[0], x[-1])
-    plt.ylim(0, max(C_values[0]) + 5)
-    plt.xlabel('Position x [cm]', fontsize=14)
-    plt.ylabel('Konzentration [mg/kg]', fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    
-    # Erste Legende (Zeitpunkte)
-    first_legend = plt.legend(handles=time_lines, loc='upper right', bbox_to_anchor=(1.25, 1.02), fontsize=14)
-    plt.gca().add_artist(first_legend)
+    # Layer-Hintergründe über gesamte Höhe mit axvspan
+    added = set()
+    start = x[0]
+    for layer in layers:
+        end = start + layer.d
+        col = colors.get(layer.material, '#cccccc')
+        # Label nur beim ersten Mal hinzufügen
+        lbl = layer.material if layer.material not in added else None
+        ax.axvspan(start, end, ymin=0, ymax=1, facecolor=col, alpha=0.3, label=lbl)
+        added.add(layer.material)
+        start = end
 
-    # Zweite Legende (Layer)
-    layer_patches = [patch for patch in layer_patches if not patch.get_label().startswith('_')]
-    plt.legend(handles=layer_patches, loc='upper right', bbox_to_anchor=(1.33, 0.28), fontsize=14)
-    
+    # Legenden
+    legend1 = ax.legend(handles=time_lines,
+                        loc='upper right',
+                        title='Zeitpunkte',
+                        fontsize=12)
+    ax.add_artist(legend1)
+    layer_labels = []
+    for layer in layers:
+        if layer.material not in layer_labels:
+            layer_labels.append(layer.material)
+
+    # Dummy-Patches für die Legende
+    legend_handles = [
+        Patch(facecolor=colors[label], edgecolor='none', alpha=0.3, label=label)
+        for label in layer_labels
+    ]
+
+    legend2 = ax.legend(handles=legend_handles,
+                        loc='lower right',
+                        title='Layer',
+                        fontsize=12)
+
+    # Speichern und Anzeigen
     if save_path:
-        plot_filename = os.path.join(save_path, 'concentration_plot.pdf')
-        plt.savefig(plot_filename, bbox_inches='tight')
-        print(f"Konzentrationsplot gespeichert unter: {plot_filename}")
-        
+        fn = os.path.join(save_path, 'concentration_plot.pdf')
+        fig.savefig(fn)
+        print(f"Konzentrationsplot gespeichert unter: {fn}")
+
     plt.show()
+
+
 
 def plot_mass_conservation(total_masses, total_mass_init, t_max, Nt, plot_interval, save_path=None):
     """

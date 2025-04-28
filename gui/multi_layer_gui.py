@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon
-
+from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
 
 class MultiLayerTab(QWidget):
     def __init__(self):
@@ -23,15 +23,20 @@ class MultiLayerTab(QWidget):
         self.top_layout = QGridLayout()
         self.main_layout.addLayout(self.top_layout)
 
-        # --- Eingabebereich (links) ---
+        # Eingabebereich (links)
         self.input_layout = QVBoxLayout()
         self.T_C_input = QLineEdit("40")
         self.M_r_input = QLineEdit("531")
         self.t_max_input = QLineEdit("10")
         self.d_nx_input = QLineEdit("0.02")
 
+        # Validierung verbinden
+        for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
+            fld.textChanged.connect(lambda _, f=fld: self.validate_field(f))
+
         # Signale verbinden
         self.d_nx_input.textChanged.connect(self.update_all_nx_from_ratio)
+        self.d_nx_input.textChanged.connect(lambda _: self.validate_field(self.d_nx_input))
 
         # Nutze addWidget und setze die Elemente linksbündig
         self.input_layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
@@ -44,6 +49,8 @@ class MultiLayerTab(QWidget):
         self.layer_table = QTableWidget(0, 5)
         self.layer_table.setHorizontalHeaderLabels(["Material", "d (cm)", "nₓ", "Kₓ", "C₀ (mg/kg)"])
         self.layer_table.cellChanged.connect(self.update_nx_on_d_change)
+        self.layer_table.cellChanged.connect(self._on_table_cell_changed)
+
         self.main_layout.addWidget(self.layer_table)
 
         # Buttons unter der Tabelle
@@ -105,6 +112,8 @@ class MultiLayerTab(QWidget):
         self.main_layout.addWidget(self.start_button)
         self.main_layout.setAlignment(self.start_button, Qt.AlignCenter)
 
+        self.start_button.clicked.connect(self.start_calculation)
+
         # Fehler-Label
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("color: red;")
@@ -145,6 +154,56 @@ class MultiLayerTab(QWidget):
         row_widget.setLayout(row_layout)
 
         return row_widget
+
+    def is_valid_number(self, value: str) -> bool:
+        txt = value.strip().replace(',', '.')
+        if not txt:
+            return False
+        try:
+            float(txt)
+            return True
+        except ValueError:
+            return False
+
+    def mark_field_invalid(self, field):
+        field.setStyleSheet("border:1px solid red;")
+
+    def mark_field_valid(self, field):
+        field.setStyleSheet("")
+
+    def validate_field(self, field: QLineEdit):
+        if self.is_valid_number(field.text()):
+            self.mark_field_valid(field)
+            self.error_label.setText("")
+        else:
+            self.mark_field_invalid(field)
+            self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
+
+    def _on_table_cell_changed(self, row: int, col: int):
+        # 1) Ratio-Logik wie bisher
+        self.update_nx_on_d_change(row, col)
+
+        # 2) Validierung für numerische Spalten:
+        if col in (1, 2, 3, 4):
+            item = self.layer_table.item(row, col)
+            if item:
+                txt = item.text().strip().replace(',', '.')
+                try:
+                    float(txt)
+                    # gültig -> schwarzen Hintergrund
+                    self.layer_table.blockSignals(True)
+                    item.setBackground(Qt.black)
+                    self.layer_table.blockSignals(False)
+                    self.error_label.setText("")
+                except ValueError:
+                    # ungültig - >roten Hintergrund
+                    self.layer_table.blockSignals(True)
+                    item.setBackground(QColor("#FF0000"))
+                    self.layer_table.blockSignals(False)
+                    self.show_error_message("Ungültige Zahl in Tabelle – bitte korrigieren.")
+
+    def show_error_message(self, msg: str):
+        self.error_label.setText(msg)
 
     def add_layer(self):
         insert_at = self.layer_table.rowCount() - 1
@@ -267,4 +326,55 @@ class MultiLayerTab(QWidget):
             rect.setToolTip(f"{material}: {d} cm")
             x_offset += width
 
-    # def start_calculation(self): 
+    def start_calculation(self):
+        """Liest alle Eingaben aus, baut die Layer-Liste, führt die Simulation durch und zeigt das Ergebnis."""
+        # 1) Globale Felder validieren
+        for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
+            if not self.is_valid_number(fld.text()):
+                self.validate_field(fld)
+                return
+
+        # 2) Tabelleneinträge validieren
+        valid = True
+        for row in range(self.layer_table.rowCount()):
+            for col in (1, 2, 3, 4):  # d, nₓ, Kₓ, C₀
+                item = self.layer_table.item(row, col)
+                if item is None or not self.is_valid_number(item.text()):
+                    self.layer_table.blockSignals(True)
+                    if item: item.setBackground(QColor("#FFCCCC"))
+                    self.layer_table.blockSignals(False)
+                    valid = False
+        if not valid:
+            self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
+            return
+
+        # 3) Parameter auslesen
+        M_r  = float(self.M_r_input.text().replace(',', '.'))
+        T_C  = float(self.T_C_input.text().replace(',', '.'))
+        # t_max wird in Tagen eingegeben → in Sekunden umrechnen
+        t_max_days = float(self.t_max_input.text().replace(',', '.'))
+        t_max = t_max_days * 24 * 3600
+        # Verwende festen Zeitschritt (kann später als Eingabe ergänzt werden)
+        dt = 1.0  
+
+        # 4) Layer-Liste bauen
+        layers = []
+        for row in range(self.layer_table.rowCount()):
+            material = self.get_material_from_row(row)
+            d       = float(self.layer_table.item(row, 1).text().replace(',', '.'))
+            nx      = int(float(self.layer_table.item(row, 2).text().replace(',', '.')))
+            K_val   = float(self.layer_table.item(row, 3).text().replace(',', '.'))
+            C_init  = float(self.layer_table.item(row, 4).text().replace(',', '.'))
+            layer = Layer(material, d, nx, K_val, C_init)       # :contentReference[oaicite:3]{index=3}
+            layer.set_diffusion_coefficient(M_r, T_C)            # :contentReference[oaicite:4]{index=4}
+            layers.append(layer)
+
+        C_values, C_init, total_masses, x, partitioning = run_simulation(layers, t_max, dt)  # :contentReference[oaicite:5]{index=5}&#8203;:contentReference[oaicite:6]{index=6}
+
+        plot_results(C_values, C_init, x, layers, dt)                      # :contentReference[oaicite:7]{index=7}&#8203;:contentReference[oaicite:8]{index=8}
+
+        migrated_mass, time_points = calculate_migrated_mass_over_time(
+            C_values, x, layers, dt, calc_interval=1
+        )
+
+        plot_migrated_mass_over_time(migrated_mass, time_points, save_path=None)
