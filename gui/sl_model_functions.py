@@ -279,4 +279,45 @@ def plot_results_area(results_area, t_max, dt, save_path=None):
     plt.show()
 
 
-    
+def plot_migration_surface_over_parameter(param_name, param_values, fixed_params, simulation_case="worst"):
+    """
+    Plottet eine 3D-Oberfläche der Migrationsmenge über die Zeit für verschiedene Werte eines Parameters.
+
+    param_name: str, Name des zu variierenden Parameters, z. B. 'T_C' oder 'M_r'
+    param_values: Liste oder Array mit Werten, über die variiert werden soll
+    fixed_params: dict, fixe Parameter für das Modell
+    simulation_case: str, Simulationsfall ('worst' oder 'best')
+    """
+    from matplotlib import cm
+
+    time_days = np.arange(0, fixed_params["t_max"] / (3600 * 24), fixed_params["dt"] / (3600 * 24))
+    param_axis = []
+    time_axis = []
+    migration_axis = []
+
+    for val in param_values:
+        # Erstelle Kopie der Parameter und setze den aktuellen Wert
+        kwargs = fixed_params.copy()
+        kwargs[param_name] = val
+        kwargs["simulation_case"] = simulation_case
+
+        migration_data = migrationsmodell_piringer(**kwargs)
+        migration_data = np.array(migration_data)
+
+        for i, t in enumerate(time_days[:len(migration_data)]):
+            param_axis.append(val)
+            time_axis.append(t)
+            migration_axis.append(migration_data[i])
+
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    surf = ax.plot_trisurf(param_axis, time_axis, migration_axis, cmap=cm.viridis, linewidth=0.2)
+
+    ax.set_xlabel(f'{param_name} Wert', fontsize=12)
+    ax.set_ylabel('Zeit [Tage]', fontsize=12)
+    ax.set_zlabel('Migration [mg/dm²]', fontsize=12)
+    ax.set_title(f'Migration über Zeit und {param_name}', fontsize=14)
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    plt.tight_layout()
+    plt.show()
+

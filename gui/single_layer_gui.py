@@ -56,6 +56,9 @@ class SingleLayerTab(QWidget):
         self.error_label.setWordWrap(True)
         self.main_layout.addWidget(self.error_label)
 
+        # Dropdown für 3D-Plot-Parameter (initial None)
+        self.plot_parameter_dropdown = None
+
         # Layouts für physikalisch/chemische Eingaben, geometrische Eingaben und Grafik
         sl_phy_chem_layout = self.create_phy_chem_inputs()
         sl_geo_layout = self.create_geo_inputs()
@@ -340,9 +343,114 @@ class SingleLayerTab(QWidget):
         start_button.clicked.connect(self.start_calculation)  # Signal verbinden
         error_button_layout.addWidget(start_button, 0)
 
+        # 3D-Plot Migration Button hinzufügen
+        plot_surface_button = QPushButton("Parameter 3D-Plot")
+        plot_surface_button.setFixedSize(180, 30)
+        plot_surface_button.clicked.connect(self.plot_migration_surface)
+        error_button_layout.addWidget(plot_surface_button, 0)
+
         layout.addLayout(error_button_layout)
         
         return layout
+
+    def plot_migration_surface(self):
+        from sl_model_functions import plot_migration_surface_over_parameter
+        from PySide6.QtWidgets import QInputDialog, QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QLineEdit
+
+        if not self.validate_inputs():
+            self.show_error_message("Bitte korrigieren Sie die rot markierten Felder.")
+            return
+
+        # Basiseingaben auslesen
+        M_r = float(self.M_r_input.text())
+        T_C = float(self.T_C_input.text())
+        c_P0 = float(self.c_P0_input.text())
+        Material = self.material_dropdown.currentText()
+        P_density = float(self.P_density_input.text())
+        F_density = float(self.F_density_input.text())
+        D_P_known = None if not self.D_P_known_input.text() else float(self.D_P_known_input.text())
+        K_PF = float(self.K_PF_input.text())
+        t_max = float(self.t_max_input.text())
+        d_P = float(self.d_P_input.text())
+        V_P = float(self.V_P_input.text())
+        d_F = float(self.d_F_input.text())
+        V_F = float(self.V_F_input.text())
+        A_PF = float(self.A_PF_input.text())
+        dt = float(self.dt_input.text())
+        simulation_case = self.sim_case_dropdown.currentText()
+
+        # Benutzer fragen, welcher Parameter variiert werden soll
+        parameter, ok = QInputDialog.getItem(
+            self,
+            "Parameter für 3D-Plot",
+            "Welcher Parameter soll variiert werden?",
+            ["T_C", "M_r", "c_P0", "P_density", "F_density", "K_PF", "V_P", "V_F", "d_P", "d_F", "A_PF"],
+            0,
+            False
+        )
+        if not ok or not parameter:
+            return
+
+        # Dialog zur Eingabe von min, max, steps
+        class ParameterRangeDialog(QDialog):
+            def __init__(self, parameter_name, parent=None):
+                super().__init__(parent)
+                self.setWindowTitle(f"{parameter_name} Bereich definieren")
+                self.min_input = QLineEdit()
+                self.max_input = QLineEdit()
+                self.steps_input = QLineEdit("6")
+
+                form_layout = QFormLayout()
+                form_layout.addRow(f"{parameter_name} Minimum:", self.min_input)
+                form_layout.addRow(f"{parameter_name} Maximum:", self.max_input)
+                form_layout.addRow("Anzahl Schritte:", self.steps_input)
+
+                buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                buttons.accepted.connect(self.accept)
+                buttons.rejected.connect(self.reject)
+
+                layout = QVBoxLayout()
+                layout.addLayout(form_layout)
+                layout.addWidget(buttons)
+                self.setLayout(layout)
+
+            def get_values(self):
+                return float(self.min_input.text()), float(self.max_input.text()), int(self.steps_input.text())
+
+        # Erstelle und zeige den Dialog
+        dialog = ParameterRangeDialog(parameter, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        try:
+            min_val, max_val, steps = dialog.get_values()
+        except ValueError:
+            self.show_error_message("Ungültige Eingaben im Parameterbereich.")
+            return
+
+        param_range = list(np.linspace(min_val, max_val, steps))
+
+        # Parameterdictionary
+        fixed_params = {
+            "M_r": M_r,
+            "T_C": T_C,
+            "c_P0": c_P0,
+            "Material": Material,
+            "P_density": P_density,
+            "F_density": F_density,
+            "K_PF": K_PF,
+            "t_max": t_max,
+            "V_P": V_P,
+            "V_F": V_F,
+            "d_P": d_P,
+            "d_F": d_F,
+            "A_PF": A_PF,
+            "dt": dt,
+            "D_P_known": D_P_known,
+            "simulation_case": simulation_case
+        }
+
+        plot_migration_surface_over_parameter(parameter, param_range, fixed_params)
 
     def update_graphics(self):
         """Aktualisiert die Breite, Farbe und Position der Rechtecke basierend auf Eingaben."""
