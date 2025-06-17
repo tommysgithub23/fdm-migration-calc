@@ -30,7 +30,7 @@ class MainWindow(QMainWindow):
         logo_label = QLabel()
         pixmap = QPixmap(logo_path)
         if pixmap.isNull():
-            print("⚠️ Logo nicht gefunden unter:", logo_path)
+            print("Logo nicht gefunden unter:", logo_path)
         else:
             pixmap = pixmap.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo_label.setPixmap(pixmap)

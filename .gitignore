@@ -1,0 +1,16 @@
+# Virtuelle Umgebung
+.venv/
+
+# Python-Bytecode / Cache-Dateien
+__pycache__/
+*.py[cod]
+
+# Logs und temporäre Dateien
+*.log
+*.tmp
+
+# macOS-spezifische Dateien
+.DS_Store
+
+# VS Code Einstellungen (optional)
+.vscode/
