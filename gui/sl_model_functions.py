@@ -320,4 +320,3 @@ def plot_migration_surface_over_parameter(param_name, param_values, fixed_params
     fig.colorbar(surf, shrink=0.5, aspect=5)
     plt.tight_layout()
     plt.show()
-
