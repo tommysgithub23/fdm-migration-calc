@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (
-    QWidget, QGridLayout, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
-    QLabel, QFormLayout, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene, QSizePolicy, QSpacerItem, QComboBox, QTableWidgetItem
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
+    QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
+    QSizePolicy, QComboBox, QApplication, QToolButton
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QIcon, QPalette
 from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
 
 class MultiLayerTab(QWidget):
@@ -14,17 +15,15 @@ class MultiLayerTab(QWidget):
         # Hauptlayout
         self.main_layout = QVBoxLayout(self)
 
-        # Überschriften
-        input_label = QLabel("<b>Eingabe</b>")
-        table_label = QLabel("<b>Schichten-Tabelle</b>")
-        graphics_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        # Gemeinsames zweispaltiges Layout (wie im Single-Layer-Tab)
+        self.split_layout = QHBoxLayout()
+        self.split_layout.setSpacing(20)
+        self.split_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addLayout(self.split_layout)
 
-        # Layout für Eingabebereich und Tabelle
-        self.top_layout = QGridLayout()
-        self.main_layout.addLayout(self.top_layout)
-
-        # Eingabebereich (links)
+        # Eingabebereich (linke Spalte)
         self.input_layout = QVBoxLayout()
+        self.input_layout.setContentsMargins(0, 0, 0, 0)
         self.T_C_input = QLineEdit("40")
         self.M_r_input = QLineEdit("531")
         self.t_max_input = QLineEdit("10")
@@ -44,55 +43,60 @@ class MultiLayerTab(QWidget):
         self.input_layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "Tage", self.t_max_input))
         self.input_layout.addWidget(self._create_labeled_row("d/n<sub>x</sub>", "cm", self.d_nx_input))
         self.input_layout.setAlignment(Qt.AlignLeft)  # Links-Ausrichtung für den gesamten Eingabebereich
+        self.input_layout.setSpacing(4)
 
-        # --- Schichtentabelle (rechts) ---
+        left_column = QVBoxLayout()
+        left_column.setSpacing(6)
+        left_column.setContentsMargins(0, 0, 0, 0)
+        input_label = QLabel("<b>Physikalische/chemische Größen</b>")
+        input_label.setAlignment(Qt.AlignLeft)
+        left_column.addWidget(input_label)
+        left_column.addLayout(self.input_layout)
+        left_column.addStretch()
+
+        # --- Schichtentabelle (rechte Spalte, oberer Bereich) ---
         self.layer_table = QTableWidget(0, 5)
         self.layer_table.setHorizontalHeaderLabels(["Material", "d (cm)", "nₓ", "Kₓ", "C₀ (mg/kg)"])
         self.layer_table.cellChanged.connect(self.update_nx_on_d_change)
         self.layer_table.cellChanged.connect(self._on_table_cell_changed)
 
-        self.main_layout.addWidget(self.layer_table)
-
         # Buttons unter der Tabelle
         self.button_layout = QHBoxLayout()
-        self.add_layer_button = QPushButton()
-        self.add_layer_button.setIcon(QIcon.fromTheme("list-add"))
-        self.add_layer_button.setFixedSize(30, 30)
-        self.add_layer_button.setIconSize(self.add_layer_button.size())
+        self.add_layer_button = self._create_symbol_button("+")
         self.add_layer_button.clicked.connect(self.add_layer)
 
-        self.remove_layer_button = QPushButton()
-        self.remove_layer_button.setIcon(QIcon.fromTheme("list-remove"))
-        self.remove_layer_button.setFixedSize(30, 30)
-        self.remove_layer_button.setIconSize(self.remove_layer_button.size())
+        self.remove_layer_button = self._create_symbol_button("-")
         self.remove_layer_button.clicked.connect(self.remove_layer)
 
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.add_layer_button)
         self.button_layout.addWidget(self.remove_layer_button)
+        self.button_layout.setSpacing(6)
 
-        # --- Top Layout: Eingaben und Tabelle ---
-        self.top_layout.addWidget(input_label, 0, 0, Qt.AlignLeft)
-        self.top_layout.addLayout(self.input_layout, 1, 0, Qt.AlignTop | Qt.AlignLeft)
-        self.top_layout.addWidget(table_label, 0, 1, Qt.AlignLeft)
-        self.top_layout.addWidget(self.layer_table, 1, 1)
-        self.top_layout.addLayout(self.button_layout, 2, 1, Qt.AlignRight)
+        table_section = QVBoxLayout()
+        table_section.setSpacing(6)
+        table_section.setContentsMargins(0, 0, 0, 0)
+        table_label = QLabel("<b>Schichten-Tabelle</b>")
+        table_label.setAlignment(Qt.AlignLeft)
+        table_section.addWidget(table_label)
+        table_section.addWidget(self.layer_table)
+        table_section.addLayout(self.button_layout)
 
-        # Abstände und Margins anpassen
-        self.top_layout.setColumnStretch(0, 1)  # Eingabe kleiner halten
-        self.top_layout.setColumnStretch(1, 2)  # Tabelle breiter machen
-        self.top_layout.setContentsMargins(10, 10, 10, 10)
-        self.top_layout.setHorizontalSpacing(20)
-        self.top_layout.setVerticalSpacing(10)
-
-        # --- Grafische Darstellung (unten) ---
+        # --- Grafische Darstellung (rechte Spalte, unterer Bereich) ---
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
+        self.graphics_view.setFixedHeight(220)
+        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        self.main_layout.addWidget(graphics_label)
-        self.main_layout.addWidget(self.graphics_view)
-        self.main_layout.addStretch()
+        graphics_section = QVBoxLayout()
+        graphics_section.setSpacing(6)
+        graphics_section.setContentsMargins(0, 0, 0, 0)
+        graphics_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        graphics_label.setAlignment(Qt.AlignLeft)
+        graphics_section.addWidget(graphics_label)
+        graphics_section.addWidget(self.graphics_view)
 
         # !Farben noch entsprechend anpassen
         self.material_colors = {
@@ -109,19 +113,68 @@ class MultiLayerTab(QWidget):
 
         # Start-Button
         self.start_button = QPushButton("Simulation starten")
-        self.main_layout.addWidget(self.start_button)
-        self.main_layout.setAlignment(self.start_button, Qt.AlignCenter)
+        self.start_button.setFixedSize(160, 32)
 
+        self.start_button.pressed.connect(self._finalize_pending_table_edits)
         self.start_button.clicked.connect(self.start_calculation)
 
         # Fehler-Label
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("color: red;")
-        self.main_layout.addWidget(self.error_label)
+        self.error_label.setWordWrap(True)
+
+        controls_layout = QHBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(12)
+        controls_layout.addWidget(self.error_label, 1)
+        controls_layout.addWidget(self.start_button, 0, Qt.AlignRight)
+
+        right_column = QVBoxLayout()
+        right_column.setSpacing(12)
+        right_column.setContentsMargins(0, 0, 0, 0)
+        right_column.addLayout(table_section)
+        right_column.addLayout(graphics_section)
+        right_column.addLayout(controls_layout)
+
+        self.split_layout.addLayout(left_column, 1)
+        self.split_layout.addLayout(right_column, 2)
 
         # Tabelle mit zwei Spalten als Start vorbereiten
         self.add_contact_phase()
         self.add_layer()
+
+    def _create_symbol_button(self, symbol: str) -> QToolButton:
+        button = QToolButton()
+        button.setFixedSize(30, 30)
+        button.setIcon(self._create_symbol_icon(symbol))
+        button.setIconSize(QSize(16, 16))
+        button.setAutoRaise(False)
+        button.setStyleSheet(
+            "QToolButton { padding: 0; border: 1px solid palette(mid); border-radius: 4px; }"
+            "QToolButton:hover { border-color: palette(highlight); }"
+            "QToolButton:pressed { border-color: palette(highlight); background-color: palette(window); }"
+        )
+        return button
+
+    def _create_symbol_icon(self, symbol: str) -> QIcon:
+        size = 18
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        color = self.palette().color(QPalette.ButtonText)
+        pen = QPen(color, 2, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen)
+
+        center = size / 2
+        span = size * 0.45
+        painter.drawLine(center - span, center, center + span, center)
+        if symbol == "+":
+            painter.drawLine(center, center - span, center, center + span)
+
+        painter.end()
+        return QIcon(pixmap)
 
     def _create_labeled_row(self, label_text, unit_text, input_field):
         """Erstellt ein QWidget mit einem QHBoxLayout, das Label, Eingabefeld und Einheit enthält."""
@@ -216,7 +269,7 @@ class MultiLayerTab(QWidget):
         self.layer_table.setCellWidget(insert_at, 0, material_dropdown)
 
         # --- Spalten 1 bis 4: normale Eingabefelder ---
-        default_values = ["0.0", "10", "1.0", "0.0"]
+        default_values = ["0.2", "10", "1.0", "0.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
@@ -224,6 +277,35 @@ class MultiLayerTab(QWidget):
 
         self.update_graphics()
 
+    def _finalize_pending_table_edits(self):
+        """
+        Stellt sicher, dass offene Editor-Widgets (z. B. in der Tabelle) ihren
+        aktuellen Wert in das QTableWidgetItem übernehmen, bevor die Berechnung startet.
+        Qt commitet Werte häufig erst nach dem Durchlauf des Event-Loops; durch das
+        Erzwingen eines kurzen Event-Flushes und das manuelle Setzen verhindern wir,
+        dass frische Eingaben verloren gehen, wenn der Nutzer direkt den Start-Button klickt.
+        """
+        QApplication.processEvents()
+        current_row = self.layer_table.currentRow()
+        current_col = self.layer_table.currentColumn()
+        if current_row < 0 or current_col < 0:
+            return
+
+        # Suche nach sichtbaren Editor-Widgets (z. B. QLineEdit) innerhalb des Tables.
+        for editor in self.layer_table.findChildren(QLineEdit):
+            if not editor.isVisible():
+                continue
+
+            item = self.layer_table.item(current_row, current_col)
+            if item is None:
+                item = QTableWidgetItem()
+                item.setTextAlignment(Qt.AlignCenter)
+                self.layer_table.setItem(current_row, current_col, item)
+
+            new_value = editor.text()
+            if item.text() != new_value:
+                item.setText(new_value)
+            break
 
     
     def add_contact_phase(self):
@@ -236,7 +318,7 @@ class MultiLayerTab(QWidget):
         contact_material.setFlags(contact_material.flags() & ~Qt.ItemIsEditable)
         self.layer_table.setItem(row_count, 0, contact_material)
 
-        default_values = ["0.0", "10", "1.0", "0.0"]
+        default_values = ["2.0", "10", "1.0", "0.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
@@ -328,6 +410,8 @@ class MultiLayerTab(QWidget):
 
     def start_calculation(self):
         """Liest alle Eingaben aus, baut die Layer-Liste, führt die Simulation durch und zeigt das Ergebnis."""
+        self._finalize_pending_table_edits()
+
         # 1) Globale Felder validieren
         for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
             if not self.is_valid_number(fld.text()):

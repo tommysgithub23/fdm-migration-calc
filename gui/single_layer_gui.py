@@ -7,12 +7,13 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog,
                                QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
                                QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
 from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer)
+from tooltip_helper import DelayedToolTipHelper
 
 
 class SingleLayerTab(QWidget):
@@ -22,6 +23,11 @@ class SingleLayerTab(QWidget):
 
     def __init__(self):
         super().__init__()
+
+        self.tooltip_helper = DelayedToolTipHelper(parent=self)
+        self.label_width = 50
+        self.input_width = 90
+        self.unit_width = 20
 
         # Standardwerte für Initialgrafik
         self.default_d_P = 0.2  # Schichtdicke für Polymer Initialgrafik
@@ -71,6 +77,8 @@ class SingleLayerTab(QWidget):
 
         # Hauptlayout horizontal kombinieren (linke und rechte Seite)
         sl_input_tab_layout = QHBoxLayout()
+        sl_input_tab_layout.setSpacing(20)
+        sl_input_tab_layout.setContentsMargins(0, 0, 0, 0)
         sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
         sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
 
@@ -79,13 +87,15 @@ class SingleLayerTab(QWidget):
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
-        form_layout = QFormLayout()
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Create a QLabel for the headline
         headline_label = QLabel("<b>Physikalische/chemische Größen</b>")
-        headline_label.setAlignment(Qt.AlignLeft)  # Align left like the form layout rows
-        headline_label.setContentsMargins(0, 0, 0, 0)  # Remove any additional margins
-        form_layout.addRow(headline_label)  # Add headline directly to the form layout
+        headline_label.setAlignment(Qt.AlignLeft)
+        headline_label.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(headline_label)
 
         # Add input fields
         self.T_C_input = QLineEdit("25")
@@ -96,31 +106,51 @@ class SingleLayerTab(QWidget):
         self.F_density_input = QLineEdit("1")
         self.D_P_known_input = QLineEdit()
         self.D_P_checkbox = QCheckBox("Bekannt")  # Checkbox to toggle D_P_known_input
+        self.tooltip_helper.register(
+            self.D_P_checkbox,
+            "Aktivieren, um einen bekannten Diffusionskoeffizienten D_P einzugeben."
+        )
         self.K_PF_input = QLineEdit("1")
         self.dt_input = QLineEdit("1")
 
         # Material dropdown
         material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
         self.material_dropdown = QComboBox()
-        self.material_dropdown.addItems(material_list)      
+        self.material_dropdown.addItems(material_list)
+        self._apply_input_width(self.material_dropdown)
+        self.tooltip_helper.register(
+            self.material_dropdown,
+            "Material der betrachteten Polymerschicht auswählen."
+        )
 
         # Narrow input fields
-        for input_field in [self.T_C_input, self.t_max_input, self.M_r_input, self.c_P0_input, 
+        for input_field in [self.T_C_input, self.t_max_input, self.M_r_input, self.c_P0_input,
                             self.P_density_input, self.F_density_input, self.D_P_known_input, self.K_PF_input, self.dt_input]:
-            input_field.setMaximumWidth(70)  # Set max width to make fields narrower
+            input_field.setFixedWidth(self.input_width)
+            input_field.setFixedHeight(22)
             input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
+
+        self.tooltip_helper.register(self.T_C_input, "Temperatur in °C.")
+        self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation.")
+        self.tooltip_helper.register(self.dt_input, "Zeitschritt der Simulation.")
+        self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten.")
+        self.tooltip_helper.register(self.c_P0_input, "Anfangskonzentration des Migranten im Polymer.")
+        self.tooltip_helper.register(self.P_density_input, "Dichte des Polymers.")
+        self.tooltip_helper.register(self.F_density_input, "Dichte der Kontaktphase.")
+        self.tooltip_helper.register(self.K_PF_input, "Verteilungskoeffizient zwischen Polymer und Kontaktphase.")
+        self.tooltip_helper.register(self.D_P_known_input, "Bekannter Diffusionskoeffizient.")
         
         # First row of the form
-        form_layout.addRow(self._create_labeled_row("Material", "", self.material_dropdown))
+        layout.addWidget(self._create_labeled_row("Material", "", self.material_dropdown))
         # Other rows of the form
-        form_layout.addRow(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
-        form_layout.addRow(self._create_labeled_row("t<sub>max</sub>", "s", self.t_max_input))
-        form_layout.addRow(self._create_labeled_row("Δt", "s", self.dt_input))
-        form_layout.addRow(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
-        form_layout.addRow(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_P0_input))
-        form_layout.addRow(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", self.P_density_input))
-        form_layout.addRow(self._create_labeled_row("ρ<sub>F</sub>", "g/cm³", self.F_density_input))
-        form_layout.addRow(self._create_labeled_row("K<sub>PF</sub>", "-", self.K_PF_input))
+        layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
+        layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "s", self.t_max_input))
+        layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
+        layout.addWidget(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
+        layout.addWidget(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_P0_input))
+        layout.addWidget(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", self.P_density_input))
+        layout.addWidget(self._create_labeled_row("ρ<sub>F</sub>", "g/cm³", self.F_density_input))
+        layout.addWidget(self._create_labeled_row("K<sub>PF</sub>", "-", self.K_PF_input))
         
         
         # Zeile für die Eingabe des Diffusionskoeffizienten mir "Checkbox toggle"
@@ -135,16 +165,11 @@ class SingleLayerTab(QWidget):
         # Add checkbox and input field for diffusion coefficient
         D_P_row = self._create_labeled_row("D<sub>P</sub>", "cm²/s", self.D_P_known_input)
         D_P_row.layout().insertWidget(3, self.D_P_checkbox)  # Add the checkbox in the row
-        form_layout.addRow(D_P_row)
+        layout.addWidget(D_P_row)
 
         # Tighten vertical spacing
-        form_layout.setVerticalSpacing(4)  # Minimal spacing for better alignment
-        form_layout.setContentsMargins(0, 0, 0, 0)  # Reduce overall margins
+        layout.setSpacing(6)
 
-        # Create a main layout to return
-        phy_chem_layout = QVBoxLayout()
-        phy_chem_layout.addLayout(form_layout)
-        
         # Dynamische Validierung für physikalisch-chemische Eingabefelder (Verbindet Feld mit Signal)
         self.T_C_input.textChanged.connect(lambda: self.validate_field(self.T_C_input, "T_C"))
         self.t_max_input.textChanged.connect(lambda: self.validate_field(self.t_max_input, "t_max"))
@@ -159,12 +184,13 @@ class SingleLayerTab(QWidget):
         # Dynamisches Anpassen der Schichtdarstellugn basierend auf Material 
         self.material_dropdown.currentTextChanged.connect(self.update_graphics)
 
-        return phy_chem_layout
+        return layout
 
     def create_geo_inputs(self):
         # Create layout for geometric inputs
         geo_layout = QVBoxLayout()
-        form_layout = QFormLayout()
+        geo_layout.setSpacing(6)
+        geo_layout.setContentsMargins(0, 0, 0, 0)
 
         # Create a QLabel for the headline
         headline_label = QLabel("<b>Geometrische Größen</b>")
@@ -178,6 +204,11 @@ class SingleLayerTab(QWidget):
         self.V_P_input = QLineEdit("1.2")
         self.V_F_input = QLineEdit("11")
         self.A_PF_input = QLineEdit("6")
+        self.tooltip_helper.register(self.d_P_input, "Schichtdicke des Polymers.")
+        self.tooltip_helper.register(self.d_F_input, "Schichtdicke der Kontaktphase.")
+        self.tooltip_helper.register(self.V_P_input, "Volumen des Polymers.")
+        self.tooltip_helper.register(self.V_F_input, "Volumen der Kontaktphase.")
+        self.tooltip_helper.register(self.A_PF_input, "Kontaktfläche zwischen Polymer und Kontaktphase.")
         
         
         # Signale verbinden, damit sich die Felder automatisch ausfüllen
@@ -190,36 +221,38 @@ class SingleLayerTab(QWidget):
         self.sim_case_dropdown = QComboBox()
         simulation_case = ["worst","best"]
         self.sim_case_dropdown.addItems(simulation_case)
-        self.sim_case_dropdown.setMaximumWidth(85)
+        self._apply_input_width(self.sim_case_dropdown)
+        self.tooltip_helper.register(
+            self.sim_case_dropdown,
+            "Bestimmt, ob mit Worst-Case- oder Best-Case-Annahmen gerechnet wird (Diffusionskoeffizient nach Piringer)."
+        )
 
         # Narrow input fields
         for input_field in [self.d_P_input, self.d_F_input, self.V_P_input, self.V_F_input, self.A_PF_input]:
-            input_field.setMaximumWidth(70)  # Set max width to make fields narrower
+            self._apply_input_width(input_field)
+            input_field.setFixedHeight(22)
             input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
 
         # Create rows for combined inputs
         row_1_layout = QHBoxLayout()
+        row_1_layout.setSpacing(12)
         row_1_layout.addWidget(self._create_labeled_row("A<sub>PF</sub>", "dm²", self.A_PF_input))
         row_1_layout.addWidget(self._create_labeled_row("Simulation Case", "", self.sim_case_dropdown))
 
         row_2_layout = QHBoxLayout()
+        row_2_layout.setSpacing(12)
         row_2_layout.addWidget(self._create_labeled_row("d<sub>P</sub>", "cm", self.d_P_input))
         row_2_layout.addWidget(self._create_labeled_row("d<sub>F</sub>", "cm", self.d_F_input))
 
         row_3_layout = QHBoxLayout()
+        row_3_layout.setSpacing(12)
         row_3_layout.addWidget(self._create_labeled_row("V<sub>P</sub>", "cm³", self.V_P_input))
         row_3_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", self.V_F_input))
 
         # Add rows to the form layout
-        form_layout.addRow(row_1_layout)
-        form_layout.addRow(row_2_layout)
-        form_layout.addRow(row_3_layout)
-
-        # Adjust spacing between rows
-        form_layout.setVerticalSpacing(3)  # Adjust spacing between rows
-
-        # Add form layout to the main layout
-        geo_layout.addLayout(form_layout)
+        geo_layout.addLayout(row_1_layout)
+        geo_layout.addLayout(row_2_layout)
+        geo_layout.addLayout(row_3_layout)
         
         # Dynamische Validierung für geometrische Eingabefelder
         self.d_P_input.textChanged.connect(lambda: self.validate_field(self.d_P_input, "d_P"))
@@ -594,29 +627,68 @@ class SingleLayerTab(QWidget):
         self.results_popup.show()
 
     def _create_labeled_row(self, label_text, unit_text, input_field):
-            # Create a horizontal layout for the row
-            row_layout = QHBoxLayout()
+        row_layout = QHBoxLayout()
+        row_layout.setSpacing(4)
+        row_layout.setContentsMargins(0, 0, 0, 0)
 
-            # Create the label with LaTeX-like text
-            label = QLabel(f"<html>{label_text}</html>")
-            label.setMinimumWidth(40)  # Optional: Adjust width for consistent alignment
+        label = QLabel(f"<html>{label_text}</html>")
+        label.setMinimumWidth(self.label_width)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
 
-            # Create the unit label
-            unit_label = QLabel(unit_text)
+        if isinstance(input_field, QLineEdit):
+            self._apply_input_width(input_field)
+            input_field.setFixedHeight(22)
+            input_field.setAlignment(Qt.AlignRight)
+        elif isinstance(input_field, QComboBox):
+            input_field.setFixedHeight(24)
+            self._apply_input_width(input_field)
 
-            # Add widgets to the horizontal layout
-            row_layout.addWidget(label)
-            row_layout.addWidget(input_field)
-            row_layout.addWidget(unit_label)
+        unit_label = QLabel(unit_text)
+        unit_label.setMinimumWidth(self.unit_width)
+        unit_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        unit_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
 
-            # Stretch for spacing (optional)
-            row_layout.addStretch()
+        row_layout.addWidget(label)
+        row_layout.addWidget(input_field)
+        row_layout.addWidget(unit_label)
+        row_layout.addStretch(1)
 
-            # Return the layout as a QWidget for the form layout
-            row_widget = QWidget()
-            row_widget.setLayout(row_layout)
+        row_widget = QWidget()
+        row_widget.setLayout(row_layout)
 
-            return row_widget
+        return row_widget
+
+    def _init_dimension_defaults(self):
+        label_texts = [
+            "Material", "T<sub>C</sub>", "t<sub>max</sub>", "Δt",
+            "M<sub>r</sub>", "c<sub>P0</sub>", "ρ<sub>P</sub>", "ρ<sub>F</sub>",
+            "K<sub>PF</sub>", "D<sub>P</sub>", "A<sub>PF</sub>", "d<sub>P</sub>",
+            "d<sub>F</sub>", "V<sub>P</sub>", "V<sub>F</sub>", "Simulation Case"
+        ]
+        unit_texts = [
+            "°C", "s", "g/mol", "mg/kg", "g/cm³", "-", "cm²/s",
+            "dm²", "cm", "cm³", ""
+        ]
+
+        self.label_width = self._compute_html_label_width(label_texts) + 6
+        self.unit_width = max(self._compute_html_label_width(unit_texts), 55)
+        self.input_width = 90
+
+    def _compute_html_label_width(self, texts):
+        max_width = 0
+        for text in texts:
+            if not text:
+                continue
+            label = QLabel(f"<html>{text}</html>")
+            label.setTextFormat(Qt.RichText)
+            max_width = max(max_width, label.sizeHint().width())
+        return max_width
+
+    def _apply_input_width(self, widget):
+        widget.setFixedWidth(self.input_width)
+        if isinstance(widget, QComboBox):
+            widget.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
 
 
 class ResultsPopup(QWidget):
