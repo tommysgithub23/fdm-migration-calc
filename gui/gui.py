@@ -3,6 +3,7 @@ from PySide6.QtGui     import QPixmap, QIcon
 from PySide6.QtCore    import Qt
 from single_layer_gui import SingleLayerTab
 from multi_layer_gui import MultiLayerTab
+from curve_fitting_gui import CurveFittingTab
 import os
 
 class MainWindow(QMainWindow):
@@ -18,7 +19,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(logo_path))
 
         # 2) Titel und Größe des Fensters festlegen
-        self.setWindowTitle("Migration Calculation")
+        self.setWindowTitle("Migrationsmodellierung")
         self.setGeometry(100, 100, 1000, 600)
 
         # 3) Zentralen Container + Layout anlegen
@@ -48,11 +49,12 @@ class MainWindow(QMainWindow):
     def add_tabs(self):
         # Tab für das Single-Layer-Model
         single_layer_tab = SingleLayerTab()
-        self.tab_widget.addTab(single_layer_tab, "Single-Layer Model")
+        self.tab_widget.addTab(single_layer_tab, "Single-Layer Modell")
 
         # Tab für das Multi-Layer-Model
         multi_layer_tab = MultiLayerTab()
-        self.tab_widget.addTab(multi_layer_tab, "Multi-Layer Model")
+        self.tab_widget.addTab(multi_layer_tab, "Multi-Layer Modell")
 
-        
-
+        # Tab für Curve Fitting
+        curve_fitting_tab = CurveFittingTab()
+        self.tab_widget.addTab(curve_fitting_tab, "Curve Fitting")

@@ -306,7 +306,7 @@ class MultiLayerTab(QWidget):
         self.layer_table.setCellWidget(insert_at, 0, material_dropdown)
 
         # --- Spalten 1 bis 4: normale Eingabefelder ---
-        default_values = ["0.5", "10", "1.0", "0.0"]
+        default_values = ["0.2", "10", "1.0", "0.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)

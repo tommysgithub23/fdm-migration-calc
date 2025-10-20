@@ -193,6 +193,7 @@ def plot_migration_results(t_max, dt, optimal_simulation, measurement_seconds, m
     plt.savefig(save_path, bbox_inches='tight')
     
     print(f"Plot gespeichert unter: {save_path}")
+    return save_path
 def load_measurement_data(file_path):
     df = pd.read_excel(file_path, sheet_name="Sheet1")
     grouped_data = {}
@@ -255,8 +256,9 @@ def process_all_measurements(file_path, excel_output_path, plots_dir):
         save_results_to_excel(measurement_point, optimal_D_P, excel_output_path)
 
 # Speicherpfad der Excel-Datei
-data_file = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/Messwerte_Umstrukturiert.xlsx"
-results_file = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/Ergebnisse_Diffcoeff_curve-fitting.xlsx"
-# plots_dir = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/plots"
-plots_dir = "/Users/tomhartmann/Desktop/temp"
-process_all_measurements(data_file, results_file, plots_dir)
+if __name__ == "__main__":
+    data_file = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/Messwerte_Umstrukturiert.xlsx"
+    results_file = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/Ergebnisse_Diffcoeff_curve-fitting.xlsx"
+    # plots_dir = "/Users/tomhartmann/Documents/GitHub/fdm-migration-calc/data/plots"
+    plots_dir = "/Users/tomhartmann/Desktop/temp"
+    process_all_measurements(data_file, results_file, plots_dir)

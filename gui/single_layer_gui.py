@@ -97,6 +97,12 @@ class SingleLayerTab(QWidget):
         headline_label.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(headline_label)
 
+        # Inner layout controls spacing between inputs and headline
+        inputs_layout = QVBoxLayout()
+        inputs_layout.setContentsMargins(0, 0, 0, 0)
+        inputs_layout.setSpacing(6)
+        inputs_layout.setAlignment(Qt.AlignTop)
+
         # Add input fields
         self.T_C_input = QLineEdit("25")
         self.t_max_input = QLineEdit("1000")
@@ -141,16 +147,16 @@ class SingleLayerTab(QWidget):
         self.tooltip_helper.register(self.D_P_known_input, "Bekannter Diffusionskoeffizient.")
         
         # First row of the form
-        layout.addWidget(self._create_labeled_row("Material", "", self.material_dropdown))
+        inputs_layout.addWidget(self._create_labeled_row("Material", "", self.material_dropdown))
         # Other rows of the form
-        layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
-        layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "s", self.t_max_input))
-        layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
-        layout.addWidget(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
-        layout.addWidget(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_P0_input))
-        layout.addWidget(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", self.P_density_input))
-        layout.addWidget(self._create_labeled_row("ρ<sub>F</sub>", "g/cm³", self.F_density_input))
-        layout.addWidget(self._create_labeled_row("K<sub>PF</sub>", "-", self.K_PF_input))
+        inputs_layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
+        inputs_layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "s", self.t_max_input))
+        inputs_layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
+        inputs_layout.addWidget(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
+        inputs_layout.addWidget(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_P0_input))
+        inputs_layout.addWidget(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", self.P_density_input))
+        inputs_layout.addWidget(self._create_labeled_row("ρ<sub>F</sub>", "g/cm³", self.F_density_input))
+        inputs_layout.addWidget(self._create_labeled_row("K<sub>PF</sub>", "-", self.K_PF_input))
         
         
         # Zeile für die Eingabe des Diffusionskoeffizienten mir "Checkbox toggle"
@@ -165,10 +171,11 @@ class SingleLayerTab(QWidget):
         # Add checkbox and input field for diffusion coefficient
         D_P_row = self._create_labeled_row("D<sub>P</sub>", "cm²/s", self.D_P_known_input)
         D_P_row.layout().insertWidget(3, self.D_P_checkbox)  # Add the checkbox in the row
-        layout.addWidget(D_P_row)
+        inputs_layout.addWidget(D_P_row)
 
-        # Tighten vertical spacing
-        layout.setSpacing(6)
+        # Add configured input rows below the headline
+        layout.addLayout(inputs_layout)
+        layout.addStretch(1)
 
         # Dynamische Validierung für physikalisch-chemische Eingabefelder (Verbindet Feld mit Signal)
         self.T_C_input.textChanged.connect(lambda: self.validate_field(self.T_C_input, "T_C"))
