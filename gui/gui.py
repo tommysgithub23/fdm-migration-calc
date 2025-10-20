@@ -14,7 +14,7 @@ class MainWindow(QMainWindow):
 
         # 1) Fenster-Icon setzen (relativ zum Skript-Pfad)
         base = os.path.dirname(__file__)
-        logo_path = os.path.join(base, "logo.png")
+        logo_path = os.path.join(base, "IKK_logo.svg")
         self.setWindowIcon(QIcon(logo_path))
 
         # 2) Titel und Größe des Fensters festlegen

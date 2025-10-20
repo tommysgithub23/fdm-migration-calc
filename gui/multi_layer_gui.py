@@ -6,11 +6,16 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QIcon, QPalette
 from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
+from tooltip_helper import DelayedToolTipHelper
 
 class MultiLayerTab(QWidget):
     def __init__(self):
         super().__init__()
         self.material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
+        self.tooltip_helper = DelayedToolTipHelper(parent=self)
+        self.label_width = 50
+        self.input_width = 90
+        self.unit_width = 20
 
         # Hauptlayout
         self.main_layout = QVBoxLayout(self)
@@ -28,6 +33,10 @@ class MultiLayerTab(QWidget):
         self.M_r_input = QLineEdit("531")
         self.t_max_input = QLineEdit("10")
         self.d_nx_input = QLineEdit("0.02")
+        self.tooltip_helper.register(self.T_C_input, "Temperatur der Simulation in °C.")
+        self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten in g/mol.")
+        self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation in Tagen (wird in Sekunden umgerechnet).")
+        self.tooltip_helper.register(self.d_nx_input, "Verhältnis von Schichtdicke zu räumlicher Diskretisierung d/nₓ in cm.")
 
         # Validierung verbinden
         for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
@@ -43,7 +52,7 @@ class MultiLayerTab(QWidget):
         self.input_layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "Tage", self.t_max_input))
         self.input_layout.addWidget(self._create_labeled_row("d/n<sub>x</sub>", "cm", self.d_nx_input))
         self.input_layout.setAlignment(Qt.AlignLeft)  # Links-Ausrichtung für den gesamten Eingabebereich
-        self.input_layout.setSpacing(4)
+        self.input_layout.setSpacing(6)
 
         left_column = QVBoxLayout()
         left_column.setSpacing(6)
@@ -56,16 +65,34 @@ class MultiLayerTab(QWidget):
 
         # --- Schichtentabelle (rechte Spalte, oberer Bereich) ---
         self.layer_table = QTableWidget(0, 5)
-        self.layer_table.setHorizontalHeaderLabels(["Material", "d (cm)", "nₓ", "Kₓ", "C₀ (mg/kg)"])
+        headers = ["Material", "d (cm)", "nₓ", "Kₓ", "C₀ (mg/kg)"]
+        self.layer_table.setHorizontalHeaderLabels(headers)
+        self.column_tooltips = {
+            0: "Materialtyp der Schicht.",
+            1: "Schichtdicke d in Zentimetern.",
+            2: "Anzahl der Diskretisierungselemente nₓ.",
+            3: "Verteilungskoeffizient Kₓ zur nächsten Schicht.",
+            4: "Anfangskonzentration C₀ der Schicht in mg/kg."
+        }
+        for col, text in self.column_tooltips.items():
+            header_item = self.layer_table.horizontalHeaderItem(col)
+            if header_item:
+                header_item.setToolTip(text)
+        self.tooltip_helper.register(
+            self.layer_table,
+            "Tabelle der Schichten: Doppelklick auf eine Zelle, um Werte zu bearbeiten."
+        )
         self.layer_table.cellChanged.connect(self.update_nx_on_d_change)
         self.layer_table.cellChanged.connect(self._on_table_cell_changed)
 
         # Buttons unter der Tabelle
         self.button_layout = QHBoxLayout()
         self.add_layer_button = self._create_symbol_button("+")
+        self.tooltip_helper.register(self.add_layer_button, "Neue Schicht oberhalb der Kontaktphase hinzufügen.")
         self.add_layer_button.clicked.connect(self.add_layer)
 
         self.remove_layer_button = self._create_symbol_button("-")
+        self.tooltip_helper.register(self.remove_layer_button, "Oberste Schicht (außer Kontaktphase) entfernen.")
         self.remove_layer_button.clicked.connect(self.remove_layer)
 
         self.button_layout.addStretch()
@@ -114,6 +141,7 @@ class MultiLayerTab(QWidget):
         # Start-Button
         self.start_button = QPushButton("Simulation starten")
         self.start_button.setFixedSize(160, 32)
+        self.tooltip_helper.register(self.start_button, "Führt die Simulation mit den eingegebenen Schichten aus.")
 
         self.start_button.pressed.connect(self._finalize_pending_table_edits)
         self.start_button.clicked.connect(self.start_calculation)
@@ -179,28 +207,36 @@ class MultiLayerTab(QWidget):
     def _create_labeled_row(self, label_text, unit_text, input_field):
         """Erstellt ein QWidget mit einem QHBoxLayout, das Label, Eingabefeld und Einheit enthält."""
         row_layout = QHBoxLayout()
-        row_layout.setSpacing(5)  # Abstand zwischen den Widgets
+        row_layout.setSpacing(6)  # Abstand zwischen den Widgets
         row_layout.setContentsMargins(0, 0, 0, 0)  # Entferne zusätzliche Margins
 
         # Label für die Beschreibung
         label = QLabel(f"<html>{label_text}</html>")
-        label.setFixedWidth(40)  # Feste Breite für Label für gleichmäßige Ausrichtung
-        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Rechts ausgerichtet, vertikal zentriert
+        label.setMinimumWidth(self.label_width)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
 
         # Eingabefeld
-        input_field.setFixedWidth(70)  # Einheitliche Breite für die Eingabefelder
-        input_field.setFixedHeight(25)  # Einheitliche Höhe für die Eingabefelder
-        input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
+        if isinstance(input_field, QLineEdit):
+            input_field.setFixedWidth(self.input_width)
+            input_field.setFixedHeight(25)  # Einheitliche Höhe für die Eingabefelder
+            input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
+        elif isinstance(input_field, QComboBox):
+            input_field.setFixedHeight(25)
+            input_field.setFixedWidth(self.input_width)
+            input_field.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
 
         # Label für die Einheit
         unit_label = QLabel(unit_text)
-        unit_label.setFixedWidth(50)  # Feste Breite für die Einheit
+        unit_label.setMinimumWidth(self.unit_width)
         unit_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # Links ausgerichtet, vertikal zentriert
+        unit_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
 
         # Füge Widgets dem Layout hinzu
         row_layout.addWidget(label)
         row_layout.addWidget(input_field)
         row_layout.addWidget(unit_label)
+        row_layout.addStretch()
 
         # Verpacke das Layout in ein Widget
         row_widget = QWidget()
@@ -266,13 +302,17 @@ class MultiLayerTab(QWidget):
         material_dropdown = QComboBox()
         material_dropdown.addItems(self.material_list)
         material_dropdown.currentTextChanged.connect(self.update_graphics)
+        self.tooltip_helper.register(material_dropdown, "Materialwahl für diese Schicht.")
         self.layer_table.setCellWidget(insert_at, 0, material_dropdown)
 
         # --- Spalten 1 bis 4: normale Eingabefelder ---
-        default_values = ["0.2", "10", "1.0", "0.0"]
+        default_values = ["0.5", "10", "1.0", "0.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
+            tooltip = self.column_tooltips.get(col)
+            if tooltip:
+                item.setToolTip(tooltip)
             self.layer_table.setItem(insert_at, col, item)
 
         self.update_graphics()
@@ -316,12 +356,16 @@ class MultiLayerTab(QWidget):
         contact_material = QTableWidgetItem("Kontaktphase")
         contact_material.setTextAlignment(Qt.AlignCenter)
         contact_material.setFlags(contact_material.flags() & ~Qt.ItemIsEditable)
+        contact_material.setToolTip(self.column_tooltips.get(0, ""))
         self.layer_table.setItem(row_count, 0, contact_material)
 
         default_values = ["2.0", "10", "1.0", "0.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
+            tooltip = self.column_tooltips.get(col)
+            if tooltip:
+                item.setToolTip(tooltip)
             self.layer_table.setItem(row_count, col, item)
 
     def get_material_from_row(self, row):
