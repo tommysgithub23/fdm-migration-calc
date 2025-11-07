@@ -28,6 +28,23 @@ class SingleLayerTab(QWidget):
         self.label_width = 50
         self.input_width = 90
         self.unit_width = 20
+        self._validation_messages = []
+        self.field_labels = {
+            "T_C": "T_C",
+            "t_max": "t_max",
+            "M_r": "M_r",
+            "c_P0": "cₚ₀",
+            "P_density": "ρₚ",
+            "F_density": "ρ_F",
+            "D_P_known": "D_P",
+            "K_PF": "K_PF",
+            "dt": "Δt",
+            "d_P": "d_P",
+            "V_P": "V_P",
+            "d_F": "d_F",
+            "V_F": "V_F",
+            "A_PF": "A_PF",
+        }
 
         # Standardwerte für Initialgrafik
         self.default_d_P = 0.2  # Schichtdicke für Polymer Initialgrafik
@@ -42,14 +59,14 @@ class SingleLayerTab(QWidget):
 
         # Farben für die grafische Darstellung der Schichten
         self.material_colors = {
-            "LDPE": Qt.green,
-            "LLDPE": Qt.darkGreen,
-            "HDPE": Qt.cyan,
-            "PP": Qt.yellow,
-            "PET": Qt.magenta,
-            "PS": Qt.gray,
+            "LDPE": QColor("#f16d1d"),
+            "LLDPE": QColor("#f16d1d"),
+            "HDPE": QColor("#32c864"),
+            "PP": QColor("#c832ee"),
+            "PET": QColor("#646464"),
+            "PS": QColor("#8c564b"),
             "PEN": Qt.darkCyan,
-            "HIPS": Qt.darkBlue
+            "HIPS": Qt.darkBlue,
         }
 
         # Hauptlayout erstellen
@@ -164,6 +181,7 @@ class SingleLayerTab(QWidget):
         
         def toggle_d_p_input(checked):
             self.D_P_known_input.setEnabled(checked)
+            self.validate_field(self.D_P_known_input, "D_P_known")
         
         # Signal verbinden
         self.D_P_checkbox.toggled.connect(toggle_d_p_input)
@@ -532,6 +550,7 @@ class SingleLayerTab(QWidget):
     def validate_inputs(self):
         """Überprüft die Eingaben und markiert fehlerhafte Felder."""
         is_valid = True
+        self._validation_messages = []
 
         # Liste der Eingabefelder
         all_fields = {
@@ -560,27 +579,38 @@ class SingleLayerTab(QWidget):
                 
         if is_valid: 
             self.error_label.setText("") # Löscht Fehlermeldung
+        else:
+            message = self._compose_validation_message()
+            self.show_error_message(message)
 
         return is_valid
     
     def validate_field(self, field, field_name):
         """Überprüft ein einzelnes Eingabefeld auf Gültigkeit."""
-        if not self.is_valid_number(field.text(), field_name):
+        if not self.is_valid_number(field.text(), field_name, set_message=False):
             self.mark_field_invalid(field)
         else:
             self.mark_field_valid(field)
 
-    def is_valid_number(self, value, field_name):
+    def is_valid_number(self, value, field_name, set_message=True):
         """Prüft, ob der Wert eine gültige Dezimalzahl ist."""
         # Sonderfall für D_P: Nur prüfen, wenn Checkbox aktiviert ist
         if field_name == "D_P_known" and not self.D_P_checkbox.isChecked():
             return True  # Keine Validierung erforderlich
         if not value.strip():
+            if set_message:
+                self._add_validation_message(f"{self.field_labels.get(field_name, field_name)} darf nicht leer sein.")
+            return False
+        if "," in value:
+            if set_message:
+                self._add_validation_message("Bitte '.' als Dezimaltrennzeichen verwenden.")
             return False
         try:
             float(value.strip())
             return True
         except ValueError:
+            if set_message:
+                self._add_validation_message(f"{self.field_labels.get(field_name, field_name)} muss eine Zahl sein.")
             return False
 
     def mark_field_invalid(self, field):
@@ -595,11 +625,22 @@ class SingleLayerTab(QWidget):
         """Zeigt eine Fehlermeldung in der GUI an."""
         self.error_label.setText(message)  # Setze die Fehlermeldung in das zentrale QLabel
 
+    def _add_validation_message(self, message):
+        if message not in self._validation_messages:
+            self._validation_messages.append(message)
+
+    def _compose_validation_message(self):
+        if not self._validation_messages:
+            return "Bitte korrigieren Sie die rot markierten Felder."
+        if len(self._validation_messages) == 1:
+            return self._validation_messages[0]
+        return " • ".join(self._validation_messages)
+
     def start_calculation(self):
         """Führt die Berechnung basierend auf den Eingaben durch."""
         # Prüft ob Eingaben valide sind
         if not self.validate_inputs():
-            self.show_error_message("Bitte korrigieren Sie die rot markierten Felder.")
+            self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
             return
     
         # Physikalisch-chemische Eigenschaften

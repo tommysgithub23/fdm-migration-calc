@@ -415,7 +415,7 @@ def calculate_migrated_mass_over_time(C_values, x, layers, tabler, calc_interval
     return migrated_mass_over_time, time_points
 
 def plot_results(C_values, C_init, x, layers, tabler,
-                 log_scale=False, steps_to_plot=10, save_path=None):
+                 log_scale=False, steps_to_plot=10, save_path=None, show=True):
     """
     Erstellt einen Plot der Konzentrationsprofile zu verschiedenen Zeitpunkten während der Simulation.
     Nutzt automatisch tight_layout, damit Legende und Labels nicht abgeschnitten werden.
@@ -506,9 +506,11 @@ def plot_results(C_values, C_init, x, layers, tabler,
     ]
 
     legend2 = ax.legend(handles=legend_handles,
-                        loc='lower right',
+                        loc='upper left',
                         title='Layer',
-                        fontsize=12)
+                        fontsize=12, 
+                        bbox_to_anchor=(1, 1))
+    ax.add_artist(legend2)
 
     # Speichern und Anzeigen
     if save_path:
@@ -516,7 +518,10 @@ def plot_results(C_values, C_init, x, layers, tabler,
         fig.savefig(fn)
         print(f"Konzentrationsplot gespeichert unter: {fn}")
 
-    plt.show()
+    if show:
+        plt.show()
+
+    return fig
 
 
 
@@ -561,7 +566,7 @@ def plot_mass_conservation(total_masses, total_mass_init, t_max, Nt, plot_interv
     plt.show()
 
 
-def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path=None):
+def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path=None, show=True):
     """
     Plottet die spezifische Migrationsmenge im Verlauf der Zeit.
     
@@ -574,28 +579,30 @@ def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path
     time_points_days = np.array(time_points) / (3600 * 24)
     
     # Plot der migrierten Masse
-    plt.figure(figsize=(10, 6))
-    plt.plot(time_points_days, migrated_mass_over_time, linewidth=2, color='#F06D1D')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(time_points_days, migrated_mass_over_time, linewidth=2, color='#F06D1D')
 
     # Finde den Punkt, an dem die migrierte Masse einen bestimmten Schwellenwert überschreitet
     threshold_index = np.argmax(migrated_mass_over_time > 1e-5)
     if migrated_mass_over_time[threshold_index] > 1e-5 and threshold_index != 0:
         threshold_time = time_points_days[threshold_index]
-        plt.axvline(x=threshold_time, color='black', linestyle='--', label=f'$m_{{F}}(t)/A_{{P,F}} > 10^{{-5}} mg/dm^2$ nach {threshold_time:.2f} Tagen')
+        ax.axvline(x=threshold_time, color='black', linestyle='--', label=f'$m_{{F}}(t)/A_{{P,F}} > 10^{{-5}} mg/dm^2$ nach {threshold_time:.2f} Tagen')
 
     # Achsenbeschriftungen und Titel
-    plt.xlabel('Zeit $[Tage]$', fontsize=14)
-    plt.ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
+    ax.set_xlabel('Zeit $[Tage]$', fontsize=14)
+    ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
+    ax.tick_params(labelsize=14)
     
     if threshold_index != 0:
-        plt.legend(fontsize=14)
+        ax.legend(fontsize=14)
 
     # Plot speichern, wenn ein Pfad angegeben wurde
     if save_path:
         plot_filename = os.path.join(save_path, 'migrated_mass_plot.pdf')
-        plt.savefig(plot_filename, bbox_inches='tight')
+        fig.savefig(plot_filename, bbox_inches='tight')
         print(f"Migrationsplot gespeichert unter: {plot_filename}")
     
-    plt.show()
+    if show:
+        plt.show()
+
+    return fig

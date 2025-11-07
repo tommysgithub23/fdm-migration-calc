@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
-    QSizePolicy, QComboBox, QApplication, QToolButton
+    QSizePolicy, QComboBox, QApplication, QToolButton, QDialog
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QIcon, QPalette
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
 from tooltip_helper import DelayedToolTipHelper
 
@@ -31,7 +32,7 @@ class MultiLayerTab(QWidget):
         self.input_layout.setContentsMargins(0, 0, 0, 0)
         self.T_C_input = QLineEdit("40")
         self.M_r_input = QLineEdit("531")
-        self.t_max_input = QLineEdit("10")
+        self.t_max_input = QLineEdit("1")
         self.d_nx_input = QLineEdit("0.02")
         self.tooltip_helper.register(self.T_C_input, "Temperatur der Simulation in °C.")
         self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten in g/mol.")
@@ -127,17 +128,18 @@ class MultiLayerTab(QWidget):
 
         # !Farben noch entsprechend anpassen
         self.material_colors = {
-            "LDPE": Qt.green,
-            "LLDPE": Qt.darkGreen,
-            "HDPE": Qt.cyan,
-            "PP": Qt.yellow,
-            "PET": Qt.magenta,
-            "PS": Qt.gray,
+            "LDPE": QColor("#f16d1d"),
+            "LLDPE": QColor("#f16d1d"),
+            "HDPE": QColor("#32c864"),
+            "PP": QColor("#c832ee"),
+            "PET": QColor("#646464"),
+            "PS": QColor("#8c564b"),
             "PEN": Qt.darkCyan,
             "HIPS": Qt.darkBlue,
-            "Kontaktphase": Qt.lightGray
+            "Kontaktphase": QColor("#64e6df"),
         }
 
+        
         # Start-Button
         self.start_button = QPushButton("Simulation starten")
         self.start_button.setFixedSize(160, 32)
@@ -245,8 +247,11 @@ class MultiLayerTab(QWidget):
         return row_widget
 
     def is_valid_number(self, value: str) -> bool:
-        txt = value.strip().replace(',', '.')
+        txt = value.strip()
         if not txt:
+            return False
+        if "," in txt:
+            self.show_error_message("Bitte '.' als Dezimaltrennzeichen verwenden.")
             return False
         try:
             float(txt)
@@ -260,13 +265,61 @@ class MultiLayerTab(QWidget):
     def mark_field_valid(self, field):
         field.setStyleSheet("")
 
+    def mark_table_cell_invalid(self, row: int, col: int):
+        item = self.layer_table.item(row, col)
+        if item is None:
+            item = QTableWidgetItem("")
+            item.setTextAlignment(Qt.AlignCenter)
+            self.layer_table.setItem(row, col, item)
+        item.setBackground(QColor("#FFCCCC"))
+
+    def mark_table_cell_valid(self, row: int, col: int):
+        item = self.layer_table.item(row, col)
+        if item:
+            base_color = self.layer_table.palette().color(QPalette.Base)
+            item.setBackground(base_color)
+
+    def validate_inputs(self) -> bool:
+        """Prüft alle Eingaben und markiert ungültige Felder/Table-Cells."""
+        is_valid = True
+
+        scalar_fields = (
+            self.T_C_input,
+            self.M_r_input,
+            self.t_max_input,
+            self.d_nx_input,
+        )
+        for field in scalar_fields:
+            if self.is_valid_number(field.text()):
+                self.mark_field_valid(field)
+            else:
+                self.mark_field_invalid(field)
+                is_valid = False
+
+        for row in range(self.layer_table.rowCount()):
+            for col in (1, 2, 3, 4):
+                if not self._validate_table_value(row, col):
+                    is_valid = False
+
+        if is_valid:
+            self.error_label.setText("")
+
+        return is_valid
+
+    def _validate_table_value(self, row: int, col: int) -> bool:
+        item = self.layer_table.item(row, col)
+        text = item.text().strip() if item and item.text() else ""
+        if not self.is_valid_number(text):
+            self.mark_table_cell_invalid(row, col)
+            return False
+        self.mark_table_cell_valid(row, col)
+        return True
+
     def validate_field(self, field: QLineEdit):
         if self.is_valid_number(field.text()):
             self.mark_field_valid(field)
-            self.error_label.setText("")
         else:
             self.mark_field_invalid(field)
-            self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
 
     def _on_table_cell_changed(self, row: int, col: int):
         # 1) Ratio-Logik wie bisher
@@ -274,22 +327,7 @@ class MultiLayerTab(QWidget):
 
         # 2) Validierung für numerische Spalten:
         if col in (1, 2, 3, 4):
-            item = self.layer_table.item(row, col)
-            if item:
-                txt = item.text().strip().replace(',', '.')
-                try:
-                    float(txt)
-                    # gültig -> schwarzen Hintergrund
-                    self.layer_table.blockSignals(True)
-                    item.setBackground(Qt.black)
-                    self.layer_table.blockSignals(False)
-                    self.error_label.setText("")
-                except ValueError:
-                    # ungültig - >roten Hintergrund
-                    self.layer_table.blockSignals(True)
-                    item.setBackground(QColor("#FF0000"))
-                    self.layer_table.blockSignals(False)
-                    self.show_error_message("Ungültige Zahl in Tabelle – bitte korrigieren.")
+            self._validate_table_value(row, col)
 
     def show_error_message(self, msg: str):
         self.error_label.setText(msg)
@@ -456,31 +494,15 @@ class MultiLayerTab(QWidget):
         """Liest alle Eingaben aus, baut die Layer-Liste, führt die Simulation durch und zeigt das Ergebnis."""
         self._finalize_pending_table_edits()
 
-        # 1) Globale Felder validieren
-        for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
-            if not self.is_valid_number(fld.text()):
-                self.validate_field(fld)
-                return
-
-        # 2) Tabelleneinträge validieren
-        valid = True
-        for row in range(self.layer_table.rowCount()):
-            for col in (1, 2, 3, 4):  # d, nₓ, Kₓ, C₀
-                item = self.layer_table.item(row, col)
-                if item is None or not self.is_valid_number(item.text()):
-                    self.layer_table.blockSignals(True)
-                    if item: item.setBackground(QColor("#FFCCCC"))
-                    self.layer_table.blockSignals(False)
-                    valid = False
-        if not valid:
+        if not self.validate_inputs():
             self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
             return
 
         # 3) Parameter auslesen
-        M_r  = float(self.M_r_input.text().replace(',', '.'))
-        T_C  = float(self.T_C_input.text().replace(',', '.'))
+        M_r  = float(self.M_r_input.text())
+        T_C  = float(self.T_C_input.text())
         # t_max wird in Tagen eingegeben → in Sekunden umrechnen
-        t_max_days = float(self.t_max_input.text().replace(',', '.'))
+        t_max_days = float(self.t_max_input.text())
         t_max = t_max_days * 24 * 3600
         # Verwende festen Zeitschritt (kann später als Eingabe ergänzt werden)
         dt = 1.0  
@@ -489,20 +511,47 @@ class MultiLayerTab(QWidget):
         layers = []
         for row in range(self.layer_table.rowCount()):
             material = self.get_material_from_row(row)
-            d       = float(self.layer_table.item(row, 1).text().replace(',', '.'))
-            nx      = int(float(self.layer_table.item(row, 2).text().replace(',', '.')))
-            K_val   = float(self.layer_table.item(row, 3).text().replace(',', '.'))
-            C_init  = float(self.layer_table.item(row, 4).text().replace(',', '.'))
+            d       = float(self.layer_table.item(row, 1).text())
+            nx      = int(float(self.layer_table.item(row, 2).text()))
+            K_val   = float(self.layer_table.item(row, 3).text())
+            C_init  = float(self.layer_table.item(row, 4).text())
             layer = Layer(material, d, nx, K_val, C_init)       # :contentReference[oaicite:3]{index=3}
             layer.set_diffusion_coefficient(M_r, T_C)            # :contentReference[oaicite:4]{index=4}
             layers.append(layer)
 
         C_values, C_init, total_masses, x, partitioning = run_simulation(layers, t_max, dt)  # :contentReference[oaicite:5]{index=5}&#8203;:contentReference[oaicite:6]{index=6}
 
-        plot_results(C_values, C_init, x, layers, dt)                      # :contentReference[oaicite:7]{index=7}&#8203;:contentReference[oaicite:8]{index=8}
+        concentration_fig = plot_results(C_values, C_init, x, layers, dt, show=False)
 
         migrated_mass, time_points = calculate_migrated_mass_over_time(
             C_values, x, layers, dt, calc_interval=1
         )
 
-        plot_migrated_mass_over_time(migrated_mass, time_points, save_path=None)
+        migration_fig = plot_migrated_mass_over_time(migrated_mass, time_points, save_path=None, show=False)
+        self._show_results_dialog([migration_fig, concentration_fig])
+
+    def _show_results_dialog(self, figures):
+        valid_figures = [fig for fig in figures if fig is not None]
+        if not valid_figures:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Berechnungsergebnisse")
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+
+        for fig in valid_figures:
+            canvas = FigureCanvas(fig)
+            canvas.draw()
+            layout.addWidget(canvas)
+
+        close_button = QPushButton("Schließen")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button, alignment=Qt.AlignRight)
+
+        dialog.resize(800, 1200)
+        dialog.show()
+        self.results_dialog = dialog

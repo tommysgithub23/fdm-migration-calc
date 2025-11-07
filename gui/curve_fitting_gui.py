@@ -4,6 +4,7 @@ from typing import List, Tuple
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -36,6 +37,7 @@ class CurveFittingTab(QWidget):
 
         self.canvas: FigureCanvas | None = None
         self.saved_plot_path: str | None = None
+        self._validation_message: str = ""
 
         self.label_width = 90
         self.input_width = 120
@@ -43,6 +45,7 @@ class CurveFittingTab(QWidget):
 
         self._build_ui()
         self._add_default_rows()
+        self._register_validation_hooks()
 
     def _build_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
@@ -189,8 +192,13 @@ class CurveFittingTab(QWidget):
             self.plot_dir_input.setText(selected_dir)
 
     def calculate_coefficient(self) -> None:
-        self._set_error("")
+        self._set_error("", show_dialog=False)
         self.result_label.setText("")
+
+        if not self.validate_inputs():
+            message = self._validation_message or "Bitte korrigiere die rot markierten Felder."
+            self._set_error(message, show_dialog=False)
+            return
 
         try:
             surrogate = self._require_text(self.surrogate_input, "Surrogat")
@@ -346,6 +354,138 @@ class CurveFittingTab(QWidget):
         plt.close(figure)
         return figure
 
+    def _register_validation_hooks(self) -> None:
+        self.required_text_fields = {
+            "Surrogat": self.surrogate_input,
+            "Plot Pfad": self.plot_dir_input,
+        }
+        self.numeric_fields = {
+            "Temperatur": self.temperature_input,
+            "cₚ₀": self.c_p0_input,
+            "ρₚ": self.p_density_input,
+            "ρ_F": self.f_density_input,
+            "K_PF": self.k_pf_input,
+            "V_P": self.v_p_input,
+            "V_F": self.v_f_input,
+            "A_PF": self.a_pf_input,
+            "Δt": self.dt_input,
+        }
+
+        for widget in self.required_text_fields.values():
+            widget.textChanged.connect(lambda _, w=widget: self._validate_line_edit(w, numeric=False))
+        for widget in self.numeric_fields.values():
+            widget.textChanged.connect(lambda _, w=widget: self._validate_line_edit(w, numeric=True))
+
+        self.measurement_table.itemChanged.connect(self._on_measurement_item_changed)
+
+    def _on_measurement_item_changed(self, _item: QTableWidgetItem) -> None:
+        self._validate_measurement_table()
+
+    def validate_inputs(self) -> bool:
+        """Überprüft alle Eingabefelder und Messwerte."""
+        self._validation_message = ""
+        is_valid = True
+
+        for widget in self.required_text_fields.values():
+            if widget.text().strip():
+                self.mark_field_valid(widget)
+            else:
+                self.mark_field_invalid(widget)
+                is_valid = False
+
+        for widget in self.numeric_fields.values():
+            if self._is_valid_number(widget.text()):
+                self.mark_field_valid(widget)
+            else:
+                self.mark_field_invalid(widget)
+                is_valid = False
+
+        measurements_valid, measurement_message = self._validate_measurement_table()
+        if not measurements_valid:
+            is_valid = False
+            if measurement_message:
+                self._validation_message = measurement_message
+
+        if not is_valid and not self._validation_message:
+            self._validation_message = "Bitte korrigiere die rot markierten Felder."
+
+        if is_valid:
+            self.error_label.setText("")
+
+        return is_valid
+
+    def _validate_measurement_table(self) -> Tuple[bool, str | None]:
+        is_valid = True
+        message: str | None = None
+        filled_rows = 0
+        for row in range(self.measurement_table.rowCount()):
+            time_item = self.measurement_table.item(row, 0)
+            value_item = self.measurement_table.item(row, 1)
+
+            time_text = time_item.text().strip() if time_item and time_item.text() else ""
+            value_text = value_item.text().strip() if value_item and value_item.text() else ""
+
+            row_has_values = bool(time_text or value_text)
+            if not row_has_values:
+                self._mark_measurement_cell_valid(row, 0)
+                self._mark_measurement_cell_valid(row, 1)
+                continue
+
+            # Feldvollständigkeit prüfen
+            row_valid = True
+            if not time_text:
+                self._mark_measurement_cell_invalid(row, 0)
+                row_valid = False
+                if message is None:
+                    message = f"Bitte Zeile {row + 1} vollständig ausfüllen."
+            if not value_text:
+                self._mark_measurement_cell_invalid(row, 1)
+                row_valid = False
+                if message is None:
+                    message = f"Bitte Zeile {row + 1} vollständig ausfüllen."
+            if not row_valid:
+                is_valid = False
+                continue
+
+            # Zahlen prüfen
+            if "," in time_text or "," in value_text:
+                self._mark_measurement_cell_invalid(row, 0)
+                self._mark_measurement_cell_invalid(row, 1)
+                is_valid = False
+                if message is None:
+                    message = "Bitte '.' als Dezimaltrennzeichen verwenden."
+                continue
+
+            try:
+                time_value = float(time_text)
+                if time_value < 0:
+                    raise ValueError
+                self._mark_measurement_cell_valid(row, 0)
+            except ValueError:
+                self._mark_measurement_cell_invalid(row, 0)
+                is_valid = False
+                if message is None:
+                    message = f"Ungültige Zeit in Zeile {row + 1}."
+
+            try:
+                float(value_text)
+                self._mark_measurement_cell_valid(row, 1)
+            except ValueError:
+                self._mark_measurement_cell_invalid(row, 1)
+                is_valid = False
+                if message is None:
+                    message = f"Ungültiger Messwert in Zeile {row + 1}."
+                continue
+
+            filled_rows += 1
+
+        if filled_rows < 2:
+            is_valid = False
+            if message is None:
+                message = "Bitte mindestens zwei Messpunkte eingeben."
+
+        return is_valid, message
+
     def _require_text(self, widget: QLineEdit, field_name: str) -> str:
         text = widget.text().strip()
         if not text:
@@ -355,14 +495,61 @@ class CurveFittingTab(QWidget):
     def _parse_float(self, widget: QLineEdit, field_name: str) -> float:
         text = self._require_text(widget, field_name)
         try:
+            if "," in text:
+                raise ValueError(f"{field_name} muss '.' als Dezimaltrennzeichen verwenden.")
             return float(text)
         except ValueError as exc:
             raise ValueError(f"{field_name} muss eine Zahl sein.") from exc
 
-    def _set_error(self, message: str) -> None:
+    def _set_error(self, message: str, show_dialog: bool = True) -> None:
         self.error_label.setText(message)
-        if message:
+        if message and show_dialog:
             QMessageBox.warning(self, "Eingabefehler", message)
+
+    def mark_field_invalid(self, widget: QLineEdit) -> None:
+        widget.setStyleSheet("border: 1px solid red;")
+
+    def mark_field_valid(self, widget: QLineEdit) -> None:
+        widget.setStyleSheet("")
+
+    def _mark_measurement_cell_invalid(self, row: int, col: int) -> None:
+        item = self.measurement_table.item(row, col)
+        if item is None:
+            item = QTableWidgetItem()
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.measurement_table.setItem(row, col, item)
+        item.setBackground(QColor("#FFCCCC"))
+
+    def _mark_measurement_cell_valid(self, row: int, col: int) -> None:
+        item = self.measurement_table.item(row, col)
+        if item:
+            base_color = self.measurement_table.palette().color(QPalette.Base)
+            item.setBackground(base_color)
+
+    def _validate_line_edit(self, widget: QLineEdit, numeric: bool) -> None:
+        text = widget.text()
+        if numeric:
+            is_valid = self._is_valid_number(text)
+        else:
+            is_valid = bool(text.strip())
+        if is_valid:
+            self.mark_field_valid(widget)
+        else:
+            self.mark_field_invalid(widget)
+
+    def _is_valid_number(self, value: str) -> bool:
+        txt = value.strip()
+        if not txt:
+            return False
+        if "," in txt:
+            if not self._validation_message:
+                self._validation_message = "Bitte '.' als Dezimaltrennzeichen verwenden."
+            return False
+        try:
+            float(txt)
+            return True
+        except ValueError:
+            return False
 
     def _configure_line_edit(self, widget: QLineEdit, align_left: bool = False) -> None:
         widget.setFixedWidth(self.input_width)
