@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel
 from PySide6.QtGui     import QPixmap, QIcon
 from PySide6.QtCore    import Qt
-from single_layer_gui import SingleLayerTab
+from single_layer_gui import SingleLayerSuiteTab
 from multi_layer_gui import MultiLayerTab
 from curve_fitting_gui import CurveFittingTab
 import os
@@ -27,6 +27,35 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
 
+        # Einheitlicher Button-Style für alle Tabs
+        self.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2c2c2c;
+                color: white;
+                border: 1px solid #F06D1D;
+                border-radius: 4px;
+                padding: 4px 10px;
+            }
+            QPushButton:hover { background-color: #333333; }
+            QPushButton:pressed { background-color: #242424; }
+            QPushButton:disabled {
+                background-color: #d6d6d6;
+                color: #7a7a7a;
+                border-color: #F06D1D;
+            }
+            QToolButton {
+                background-color: #2c2c2c;
+                color: white;
+                border: 1px solid #F06D1D;
+                border-radius: 4px;
+                padding: 2px;
+            }
+            QToolButton:hover { background-color: #333333; }
+            QToolButton:pressed { background-color: #242424; }
+            """
+        )
+
         # 4) Logo-Label erstellen und ins Layout packen
         logo_label = QLabel()
         pixmap = QPixmap(logo_path)
@@ -48,13 +77,11 @@ class MainWindow(QMainWindow):
 
     def add_tabs(self):
         # Tab für das Single-Layer-Model
-        single_layer_tab = SingleLayerTab()
+        single_layer_tab = SingleLayerSuiteTab()
         self.tab_widget.addTab(single_layer_tab, "Single-Layer Modell")
 
         # Tab für das Multi-Layer-Model
         multi_layer_tab = MultiLayerTab()
         self.tab_widget.addTab(multi_layer_tab, "Multi-Layer Modell")
 
-        # Tab für Curve Fitting
-        curve_fitting_tab = CurveFittingTab()
-        self.tab_widget.addTab(curve_fitting_tab, "Curve Fitting")
+        # Curve Fitting ist jetzt im Single-Layer-Bereich enthalten

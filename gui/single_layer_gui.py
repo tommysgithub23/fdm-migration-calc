@@ -12,6 +12,12 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
                                QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
+from sl_model_package.EFSA_extended import (
+    generate_curves,
+    compute_cmod_efsa,
+    compute_eta_min_efsa,
+    DEFAULT_MATERIAL,
+)
 from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer)
 from tooltip_helper import DelayedToolTipHelper
 
@@ -101,6 +107,9 @@ class SingleLayerTab(QWidget):
 
         # Fertiges Layout hinzufügen
         self.main_layout.addLayout(sl_input_tab_layout)
+
+        # Initiale grafische Darstellung aktualisieren
+        self.update_graphics()
 
     def create_phy_chem_inputs(self):
         # Create layout for physical/chemical inputs
@@ -367,6 +376,8 @@ class SingleLayerTab(QWidget):
     def create_grafical_setup(self):
         """Erstellt den Bereich für die grafische Darstellung."""
         layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Überschrift
         headline_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
@@ -377,13 +388,16 @@ class SingleLayerTab(QWidget):
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
+        self.graphics_view.setFixedHeight(220)
+        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         # Rechtecke in der Szene hinzufügen (mit Standardwerten)
-        self.rect_f.setRect(0, 0, self.default_d_F * 40, 200)  # Skalierung *20 für Sichtbarkeit
+        self.rect_f.setRect(0, 0, self.default_d_F * 40, 100)
         self.rect_f.setBrush(self.color_init_F)
         self.graphics_scene.addItem(self.rect_f)
 
-        self.rect_p.setRect(0, 0, self.default_d_P * 40, 200)
+        self.rect_p.setRect(0, 0, self.default_d_P * 40, 100)
         self.rect_p.setBrush(self.color_init_P)
         self.graphics_scene.addItem(self.rect_p)
 
@@ -396,16 +410,18 @@ class SingleLayerTab(QWidget):
         error_button_layout.addWidget(self.error_label, 1)
         
         # Button hinzufügen
-        start_button = QPushButton("Berechnung starten")
-        start_button.setFixedSize(150, 30)  # Button-Größe anpassen
-        start_button.clicked.connect(self.start_calculation)  # Signal verbinden
-        error_button_layout.addWidget(start_button, 0)
+        self.start_button = QPushButton("Berechnung starten")
+        self.start_button.setMinimumWidth(150)
+        self.start_button.setFixedHeight(28)
+        self.start_button.clicked.connect(self.start_calculation)  # Signal verbinden
+        error_button_layout.addWidget(self.start_button, 0)
 
         # 3D-Plot Migration Button hinzufügen
-        plot_surface_button = QPushButton("Parameter 3D-Plot")
-        plot_surface_button.setFixedSize(180, 30)
-        plot_surface_button.clicked.connect(self.plot_migration_surface)
-        error_button_layout.addWidget(plot_surface_button, 0)
+        self.plot_surface_button = QPushButton("Parametervariation")
+        self.plot_surface_button.setMinimumWidth(170)
+        self.plot_surface_button.setFixedHeight(28)
+        self.plot_surface_button.clicked.connect(self.plot_migration_surface)
+        error_button_layout.addWidget(self.plot_surface_button, 0)
 
         layout.addLayout(error_button_layout)
         
@@ -519,29 +535,25 @@ class SingleLayerTab(QWidget):
 
             # Skalierungsfaktor für die Rechteckgröße
             scaling_factor = 40
-            width_p = d_P * scaling_factor
-            width_f = d_F * scaling_factor
-            total_width = width_p + width_f
+            width_p = max(0, d_P * scaling_factor)
+            width_f = max(0, d_F * scaling_factor)
+            height = 100
+            x_offset = 0
 
-            # Szenenmitte berechnen
-            scene_width = self.graphics_scene.width()
-            scene_height = self.graphics_scene.height()
+            self.graphics_scene.clear()
 
-            center_x = scene_width / 2
-            center_y = scene_height / 2
-
-            # Berechnung der Startposition für die Rechtecke
-            start_x = center_x - (total_width / 2)  # Zentriere beide Rechtecke horizontal
-            start_y = center_y - 100  # Rechtecke vertikal zentrieren (200 ist die Rechteckhöhe)
-
-            # Rechtecke setzen
-            self.rect_p.setRect(start_x, start_y, width_p, 200)
-            self.rect_f.setRect(start_x + width_p, start_y, width_f, 200)
-
-            # Farbe des Polymers basierend auf Material aktualisieren
+            # Polymerschicht
             material = self.material_dropdown.currentText()
             color = self.material_colors.get(material, Qt.red)  # Fallback zu Rot
+            self.rect_p = self.graphics_scene.addRect(x_offset, 0, width_p, height)
             self.rect_p.setBrush(color)
+            self.rect_p.setToolTip(f"Polymer ({material}): {d_P} cm")
+            x_offset += width_p
+
+            # Kontaktphase
+            self.rect_f = self.graphics_scene.addRect(x_offset, 0, width_f, height)
+            self.rect_f.setBrush(self.color_init_F)
+            self.rect_f.setToolTip(f"Kontaktphase: {d_F} cm")
 
         except ValueError:
             # Ungültige Eingaben ignorieren
@@ -826,3 +838,279 @@ class ResultsPopup(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(self, "Plot als PDF exportieren", "", "PDF-Dateien (*.pdf)")
         if file_path:
             self.figure.savefig(file_path, format="pdf")
+
+
+class EFSAExtendedTab(QWidget):
+    """
+    EFSA-Tool als Unter-Tab im Single-Layer-Bereich.
+    Berechnet C_mod und eta_min über einen Molekulargewichtsbereich,
+    erlaubt den Import von Messwerten (CSV/Excel) zur Überlagerung.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.measurement_points = []  # Liste von Dicts mit keys: Mr, C_mod, eta_min (optional)
+        self._fields = []
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(12)
+        self.main_layout.setContentsMargins(12, 12, 12, 12)
+
+        self.error_label = QLabel("")
+        self.error_label.setStyleSheet("color: red; font-weight: bold;")
+        self.error_label.setWordWrap(True)
+        self.main_layout.addWidget(self.error_label)
+
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(16)
+        self.main_layout.addLayout(top_layout)
+
+        # Eingabefelder
+        self.scenario_combo = QComboBox()
+        self.scenario_combo.addItems(["A", "B", "C"])
+        self.mr_min_input = QLineEdit("80")
+        self.mr_max_input = QLineEdit("500")
+        self.points_input = QLineEdit("400")
+        self.c_ref_input = QLineEdit("3.0")
+        self.material_combo = QComboBox()
+        self.material_combo.addItems(["PET", "LDPE", "LLDPE", "HDPE", "PP", "PS", "PEN", "HIPS"])
+
+        for fld in (self.mr_min_input, self.mr_max_input, self.points_input, self.c_ref_input):
+            fld.setFixedWidth(90)
+            fld.setAlignment(Qt.AlignRight)
+            fld.setFixedHeight(24)
+            self._fields.append(fld)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(6)
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.addWidget(self._create_labeled_row("Material", "", self.material_combo))
+        left_col.addWidget(self._create_labeled_row("Szenario", "", self.scenario_combo))
+        left_col.addWidget(self._create_labeled_row("M<sub>r,min</sub>", "g/mol", self.mr_min_input))
+        left_col.addWidget(self._create_labeled_row("M<sub>r,max</sub>", "g/mol", self.mr_max_input))
+        left_col.addWidget(self._create_labeled_row("Anzahl Punkte", "", self.points_input))
+        left_col.addWidget(self._create_labeled_row("c<sub>ref</sub>", "mg/kg", self.c_ref_input))
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        import_btn = QPushButton("Messwerte importieren")
+        import_btn.setFixedHeight(26)
+        import_btn.clicked.connect(self._import_measurements)
+        calc_btn = QPushButton("Berechnen")
+        calc_btn.setFixedHeight(26)
+        calc_btn.clicked.connect(self.update_plots)
+        export_btn = QPushButton("Plots exportieren")
+        export_btn.setFixedHeight(26)
+        export_btn.clicked.connect(self._export_plots)
+        button_row.addWidget(import_btn)
+        button_row.addWidget(calc_btn)
+        button_row.addWidget(export_btn)
+        button_row.addStretch()
+        left_col.addLayout(button_row)
+        left_col.addStretch()
+
+        top_layout.addLayout(left_col, 0)
+
+        # Plot-Bereich
+        plots_layout = QVBoxLayout()
+        plots_layout.setSpacing(12)
+        plots_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.cmod_figure = Figure(figsize=(6, 4))
+        self.cmod_canvas = FigureCanvas(self.cmod_figure)
+        plots_layout.addWidget(self.cmod_canvas)
+
+        self.eta_figure = Figure(figsize=(6, 4))
+        self.eta_canvas = FigureCanvas(self.eta_figure)
+        plots_layout.addWidget(self.eta_canvas)
+
+        top_layout.addLayout(plots_layout, 1)
+
+        self.update_plots()
+
+    def _create_labeled_row(self, label_text: str, unit_text: str, widget: QWidget) -> QWidget:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.setContentsMargins(0, 0, 0, 0)
+
+        label = QLabel(f"<html>{label_text}</html>")
+        label.setMinimumWidth(80)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        unit = QLabel(unit_text)
+        unit.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        unit.setMinimumWidth(40)
+
+        row.addWidget(label)
+        row.addWidget(widget)
+        row.addWidget(unit)
+        row.addStretch()
+
+        container = QWidget()
+        container.setLayout(row)
+        return container
+
+    def _parse_float(self, field: QLineEdit, name: str) -> float:
+        text = field.text().strip()
+        if not text:
+            self._mark_field_invalid(field)
+            raise ValueError(f"{name} darf nicht leer sein.")
+        if "," in text:
+            self._mark_field_invalid(field)
+            raise ValueError(f"{name} bitte mit '.' als Dezimaltrennzeichen angeben.")
+        try:
+            val = float(text)
+            self._mark_field_valid(field)
+            return val
+        except ValueError:
+            self._mark_field_invalid(field)
+            raise ValueError(f"{name} muss eine Zahl sein.")
+
+    def _import_measurements(self):
+        self._set_error("")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Messwerte importieren",
+            "",
+            "Excel/CSV (*.xlsx *.xls *.csv);;Alle Dateien (*)",
+        )
+        if not file_path:
+            return
+        try:
+            import pandas as pd
+
+            if file_path.lower().endswith(".csv"):
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_excel(file_path)
+
+            if df.shape[1] < 2:
+                raise ValueError("Mindestens zwei Spalten erforderlich: Mr, C_mod (optional eta_min).")
+
+            df = df.dropna()
+            self.measurement_points = []
+            for _, row in df.iterrows():
+                mr = float(row.iloc[0])
+                cmod = float(row.iloc[1])
+                eta_val = float(row.iloc[2]) if df.shape[1] > 2 else None
+                self.measurement_points.append({"Mr": mr, "C_mod": cmod, "eta_min": eta_val})
+
+            self.update_plots()
+        except Exception as exc:
+            self._set_error(f"Import fehlgeschlagen: {exc}")
+
+    def _set_error(self, msg: str):
+        self.error_label.setText(msg)
+        if not msg:
+            for fld in self._fields:
+                self._mark_field_valid(fld)
+
+    def _mark_field_invalid(self, field: QLineEdit):
+        field.setStyleSheet("border: 1px solid red;")
+
+    def _mark_field_valid(self, field: QLineEdit):
+        field.setStyleSheet("")
+
+    def update_plots(self):
+        try:
+            mr_min = self._parse_float(self.mr_min_input, "M_r,min")
+            mr_max = self._parse_float(self.mr_max_input, "M_r,max")
+            if mr_max <= mr_min:
+                raise ValueError("M_r,max muss größer als M_r,min sein.")
+            points = int(self._parse_float(self.points_input, "Anzahl Punkte"))
+            c_ref = self._parse_float(self.c_ref_input, "c_ref")
+            scenario = self.scenario_combo.currentText()
+        except ValueError as exc:
+            self._set_error(str(exc))
+            return
+
+        self._set_error("")
+        material = self.material_combo.currentText() or DEFAULT_MATERIAL
+        M_r_values, C_mod_values, _ = generate_curves(mr_min, mr_max, points, scenario, material, c_ref)
+        eta_min_values = [compute_eta_min_efsa(mr, scenario, c_ref) for mr in M_r_values]
+
+        # Plot 1: C_mod
+        self.cmod_figure.clear()
+        ax1 = self.cmod_figure.add_subplot(111)
+        ax1.plot(M_r_values, C_mod_values, color="#F06D1D", linewidth=2, label="C_mod")
+        if self.measurement_points:
+            xs = [p["Mr"] for p in self.measurement_points]
+            ys = [p["C_mod"] for p in self.measurement_points]
+            ax1.scatter(xs, ys, color="blue", s=30, label="Messwerte")
+        ax1.set_xlabel("$M_{w}$ [g/mol]")
+        ax1.set_ylabel("$C_{mod}$ [mg/kg]")
+        ax1.set_title(f"EFSA Szenario {scenario} ({material}): $C_{{mod}}$")
+        ax1.spines["left"].set_visible(True)
+        ax1.spines["bottom"].set_visible(True)
+        self.cmod_figure.subplots_adjust(left=0.14, bottom=0.14)
+        ax1.grid(True, linestyle="--", alpha=0.5)
+        if self.measurement_points:
+            ax1.legend()
+        self.cmod_canvas.draw()
+
+        # Plot 2: eta_min
+        self.eta_figure.clear()
+        ax2 = self.eta_figure.add_subplot(111)
+        ax2.plot(M_r_values, eta_min_values, color="#F06D1D", linewidth=2, label="eta_min")
+        eta_points = [p for p in self.measurement_points if p.get("eta_min") is not None]
+        if eta_points:
+            xs = [p["Mr"] for p in eta_points]
+            ys = [p["eta_min"] for p in eta_points]
+            ax2.scatter(xs, ys, color="blue", s=30, label="Messwerte")
+        ax2.set_xlabel("$M_{w}$ [g/mol]")
+        ax2.set_ylabel("$\\eta_{min}$ [%]")
+        ax2.set_title(f"EFSA Szenario {scenario} ({material}): $\\eta_{{min}}$")
+        ax2.set_ylim(0, 110)
+        ax2.spines["left"].set_visible(True)
+        ax2.spines["bottom"].set_visible(True)
+        self.eta_figure.subplots_adjust(left=0.14, bottom=0.14)
+        ax2.grid(True, linestyle="--", alpha=0.5)
+        if eta_points:
+            ax2.legend()
+        self.eta_canvas.draw()
+
+    def _export_plots(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Plots exportieren (Basisname wählen)",
+            "",
+            "PNG (*.png);;PDF (*.pdf);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        try:
+            self.cmod_figure.savefig(path.replace(".", "_cmod." + path.split(".")[-1]))
+            self.eta_figure.savefig(path.replace(".", "_eta." + path.split(".")[-1]))
+        except Exception as exc:
+            self._set_error(f"Export fehlgeschlagen: {exc}")
+
+
+class ParameterVariationTab(SingleLayerTab):
+    """Abgeleitete Variante, die auf Parametervariation fokussiert."""
+
+    def __init__(self):
+        super().__init__()
+        if hasattr(self, "start_button"):
+            self.start_button.hide()
+        if hasattr(self, "plot_surface_button"):
+            self.plot_surface_button.setText("Berechnung starten")
+            self.plot_surface_button.setMinimumWidth(200)
+
+
+class SingleLayerSuiteTab(QWidget):
+    """
+    Container-Tab für Single-Layer-Funktionen: Migration, Curve-Fitting, Parametervariation.
+    """
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+
+        from curve_fitting_gui import CurveFittingTab  # Lazy import, um Zyklen zu vermeiden
+
+        self.sub_tabs = QTabWidget()
+        self.sub_tabs.addTab(SingleLayerTab(), "Migrationsberechnung")
+        self.sub_tabs.addTab(ParameterVariationTab(), "Parametervariation")
+        self.sub_tabs.addTab(CurveFittingTab(), "Curve Fitting")
+        self.sub_tabs.addTab(EFSAExtendedTab(), "EFSA")
+
+        layout.addWidget(self.sub_tabs)

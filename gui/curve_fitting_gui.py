@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QWidget,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMessageBox,
     QSizePolicy,
+    QMenu,
 )
 
 from sl_model_curve_fitting import (
@@ -46,6 +47,14 @@ class CurveFittingTab(QWidget):
         self._build_ui()
         self._add_default_rows()
         self._register_validation_hooks()
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "measurement_table", None) and event.type() == QEvent.KeyPress:
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                if self.measurement_table.rowCount() > 0 and self.measurement_table.currentRow() == self.measurement_table.rowCount() - 1:
+                    self._add_row(start_edit=True, copy_column=self.measurement_table.currentColumn())
+                    return True
+        return super().eventFilter(obj, event)
 
     def _build_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
@@ -128,9 +137,18 @@ class CurveFittingTab(QWidget):
 
         table_layout = QVBoxLayout()
         table_layout.setSpacing(6)
+        table_layout.setContentsMargins(0, 0, 0, 0)
 
         table_label = QLabel("<b>Messwerte</b>")
-        table_layout.addWidget(table_label)
+        table_header_layout = QHBoxLayout()
+        table_header_layout.setSpacing(6)
+        table_header_layout.addWidget(table_label)
+        table_header_layout.addStretch()
+        import_button = QPushButton("Excel importieren")
+        import_button.setFixedHeight(26)
+        import_button.clicked.connect(self._import_measurements_from_excel)
+        table_header_layout.addWidget(import_button)
+        table_layout.addLayout(table_header_layout)
 
         self.measurement_table = QTableWidget(0, 2)
         self.measurement_table.setHorizontalHeaderLabels(["Zeit [Tage]", "Messwert [mg/kg]"])
@@ -138,17 +156,9 @@ class CurveFittingTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         table_layout.addWidget(self.measurement_table)
-
-        table_button_layout = QHBoxLayout()
-        table_button_layout.setSpacing(6)
-        add_row_button = QPushButton("Zeile hinzufügen")
-        add_row_button.clicked.connect(self._add_row)
-        remove_row_button = QPushButton("Zeile entfernen")
-        remove_row_button.clicked.connect(self._remove_selected_row)
-        table_button_layout.addWidget(add_row_button)
-        table_button_layout.addWidget(remove_row_button)
-        table_button_layout.addStretch()
-        table_layout.addLayout(table_button_layout)
+        self.measurement_table.installEventFilter(self)
+        self.measurement_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.measurement_table.customContextMenuRequested.connect(self._show_measurement_context_menu)
 
         top_layout.addLayout(table_layout, 1)
 
@@ -169,7 +179,7 @@ class CurveFittingTab(QWidget):
         for _ in range(3):
             self._add_row()
 
-    def _add_row(self) -> None:
+    def _add_row(self, start_edit: bool = False, copy_column: int | None = None) -> None:
         row = self.measurement_table.rowCount()
         self.measurement_table.insertRow(row)
         for col in range(2):
@@ -177,13 +187,69 @@ class CurveFittingTab(QWidget):
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.measurement_table.setItem(row, col, item)
 
-    def _remove_selected_row(self) -> None:
-        selected_rows = {index.row() for index in self.measurement_table.selectionModel().selectedIndexes()}
+        if start_edit:
+            target_col = copy_column if copy_column in (0, 1) else 0
+            self.measurement_table.setCurrentCell(row, target_col)
+            self.measurement_table.editItem(self.measurement_table.item(row, target_col))
+
+    def _remove_selected_row(self, row: int | None = None) -> None:
+        if row is not None:
+            selected_rows = {row}
+        else:
+            selected_rows = {index.row() for index in self.measurement_table.selectionModel().selectedIndexes()}
         if not selected_rows and self.measurement_table.rowCount() > 0:
-            self.measurement_table.removeRow(self.measurement_table.rowCount() - 1)
+            selected_rows = {self.measurement_table.rowCount() - 1}
+        for row_idx in sorted(selected_rows, reverse=True):
+            self.measurement_table.removeRow(row_idx)
+
+    def _show_measurement_context_menu(self, pos) -> None:
+        index = self.measurement_table.indexAt(pos)
+        if not index.isValid():
             return
-        for row in sorted(selected_rows, reverse=True):
-            self.measurement_table.removeRow(row)
+        menu = QMenu(self)
+        remove_action = menu.addAction("Zelle entfernen")
+        action = menu.exec(self.measurement_table.mapToGlobal(pos))
+        if action == remove_action:
+            self._remove_selected_row(index.row())
+
+    def _import_measurements_from_excel(self) -> None:
+        self._set_error("", show_dialog=False)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Messwerte importieren",
+            "",
+            "Excel/CSV (*.xlsx *.xls *.csv);;Alle Dateien (*)",
+        )
+        if not file_path:
+            return
+        try:
+            import pandas as pd
+
+            if file_path.lower().endswith(".csv"):
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_excel(file_path)
+
+            if df.shape[1] < 2:
+                raise ValueError("Datei benötigt mindestens zwei Spalten (Zeit, Messwert).")
+
+            df = df.iloc[:, :2].dropna()
+            if df.empty:
+                raise ValueError("Keine Daten gefunden.")
+
+            self.measurement_table.setRowCount(0)
+            for _, (time_val, meas_val) in df.iterrows():
+                row = self.measurement_table.rowCount()
+                self.measurement_table.insertRow(row)
+                for col, val in enumerate((time_val, meas_val)):
+                    item = QTableWidgetItem(str(val))
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    self.measurement_table.setItem(row, col, item)
+            # Nach Import ersten Eintrag fokussieren
+            if self.measurement_table.rowCount() > 0:
+                self.measurement_table.setCurrentCell(0, 0)
+        except Exception as exc:
+            self._set_error(f"Import fehlgeschlagen: {exc}")
 
     def _browse_plot_dir(self) -> None:
         current_dir = self.plot_dir_input.text() or os.getcwd()

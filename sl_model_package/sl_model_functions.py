@@ -23,7 +23,8 @@ def get_material_data(material, simulation_case="worst"):
         "HDPE": {"A_Pt": 13.2, "tau": 1577},
         "LLDPE": {"A_Pt": 11.5, "tau": 0},
         "PP": {"A_Pt": 12.4, "tau": 1577},
-        "PET": {"A_Pt": 6.35, "tau": 1577},
+        # "PET": {"A_Pt": 6.35, "tau": 1577}, # auskommentiert für EFSA Skript
+        "PET": {"A_Pt": 3.1, "tau": 1577},
         "PS": {"A_Pt": -0.7, "tau": 0},
         "PEN": {"A_Pt": 3.7, "tau": 1577},
         "HIPS": {"A_Pt": 0.1, "tau": 0}
@@ -33,7 +34,8 @@ def get_material_data(material, simulation_case="worst"):
         "LDPE": {"A_Pt": 10.0, "tau": 0},
         "HDPE": {"A_Pt": 10.0, "tau": 1577},
         "PP": {"A_Pt": 9.4, "tau": 1577},
-        "PET": {"A_Pt": 2.2, "tau": 1577},
+        # "PET": {"A_Pt": 2.2, "tau": 1577}, # auskommentiert für EFSA Skript
+        "PET": {"A_Pt": 3.1, "tau": 1577},
         "PS": {"A_Pt": -2.8, "tau": 0},
         "PEN": {"A_Pt": -0.34, "tau": 1577},
         "HIPS": {"A_Pt": -2.7, "tau": 0}
@@ -273,6 +275,3 @@ def plot_results_area(results_area, t_max, dt, save_path=None):
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.show()
-
-
-    

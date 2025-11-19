@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
-    QSizePolicy, QComboBox, QApplication, QToolButton, QDialog
+    QSizePolicy, QComboBox, QApplication, QDialog, QMenu
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QIcon, QPalette
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QColor, QPalette
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
 from tooltip_helper import DelayedToolTipHelper
@@ -86,20 +86,11 @@ class MultiLayerTab(QWidget):
         self.layer_table.cellChanged.connect(self.update_nx_on_d_change)
         self.layer_table.cellChanged.connect(self._on_table_cell_changed)
 
-        # Buttons unter der Tabelle
-        self.button_layout = QHBoxLayout()
-        self.add_layer_button = self._create_symbol_button("+")
-        self.tooltip_helper.register(self.add_layer_button, "Neue Schicht oberhalb der Kontaktphase hinzufügen.")
-        self.add_layer_button.clicked.connect(self.add_layer)
-
-        self.remove_layer_button = self._create_symbol_button("-")
-        self.tooltip_helper.register(self.remove_layer_button, "Oberste Schicht (außer Kontaktphase) entfernen.")
-        self.remove_layer_button.clicked.connect(self.remove_layer)
-
-        self.button_layout.addStretch()
-        self.button_layout.addWidget(self.add_layer_button)
-        self.button_layout.addWidget(self.remove_layer_button)
-        self.button_layout.setSpacing(6)
+        # Tabellen-Interaktionen: Enter in letzter Zeile fügt neue Schicht hinzu,
+        # Kontextmenü erlaubt das Entfernen einer Zeile (Kontaktphase bleibt geschützt).
+        self.layer_table.installEventFilter(self)
+        self.layer_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.layer_table.customContextMenuRequested.connect(self._show_layer_context_menu)
 
         table_section = QVBoxLayout()
         table_section.setSpacing(6)
@@ -108,7 +99,18 @@ class MultiLayerTab(QWidget):
         table_label.setAlignment(Qt.AlignLeft)
         table_section.addWidget(table_label)
         table_section.addWidget(self.layer_table)
-        table_section.addLayout(self.button_layout)
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        add_btn = QPushButton("Layer hinzufügen")
+        add_btn.setFixedHeight(26)
+        add_btn.clicked.connect(lambda: self.add_layer(select_new_row=True))
+        remove_btn = QPushButton("Layer entfernen")
+        remove_btn.setFixedHeight(26)
+        remove_btn.clicked.connect(self.remove_layer)
+        button_row.addWidget(add_btn)
+        button_row.addWidget(remove_btn)
+        button_row.addStretch()
+        table_section.addLayout(button_row)
 
         # --- Grafische Darstellung (rechte Spalte, unterer Bereich) ---
         self.graphics_view = QGraphicsView()
@@ -141,8 +143,8 @@ class MultiLayerTab(QWidget):
 
         
         # Start-Button
-        self.start_button = QPushButton("Simulation starten")
-        self.start_button.setFixedSize(160, 32)
+        self.start_button = QPushButton("Berechnung starten")
+        self.start_button.setFixedSize(150, 28)
         self.tooltip_helper.register(self.start_button, "Führt die Simulation mit den eingegebenen Schichten aus.")
 
         self.start_button.pressed.connect(self._finalize_pending_table_edits)
@@ -173,38 +175,14 @@ class MultiLayerTab(QWidget):
         self.add_contact_phase()
         self.add_layer()
 
-    def _create_symbol_button(self, symbol: str) -> QToolButton:
-        button = QToolButton()
-        button.setFixedSize(30, 30)
-        button.setIcon(self._create_symbol_icon(symbol))
-        button.setIconSize(QSize(16, 16))
-        button.setAutoRaise(False)
-        button.setStyleSheet(
-            "QToolButton { padding: 0; border: 1px solid palette(mid); border-radius: 4px; }"
-            "QToolButton:hover { border-color: palette(highlight); }"
-            "QToolButton:pressed { border-color: palette(highlight); background-color: palette(window); }"
-        )
-        return button
-
-    def _create_symbol_icon(self, symbol: str) -> QIcon:
-        size = 18
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        color = self.palette().color(QPalette.ButtonText)
-        pen = QPen(color, 2, Qt.SolidLine, Qt.RoundCap)
-        painter.setPen(pen)
-
-        center = size / 2
-        span = size * 0.45
-        painter.drawLine(center - span, center, center + span, center)
-        if symbol == "+":
-            painter.drawLine(center, center - span, center, center + span)
-
-        painter.end()
-        return QIcon(pixmap)
+    def eventFilter(self, obj, event):
+        if obj is self.layer_table and event.type() == QEvent.KeyPress:
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                # In vorletzter Zeile (oberste Nutzschicht) -> neue Schicht anlegen
+                if self.layer_table.rowCount() >= 2 and self.layer_table.currentRow() == self.layer_table.rowCount() - 2:
+                    self.add_layer(select_new_row=True)
+                    return True
+        return super().eventFilter(obj, event)
 
     def _create_labeled_row(self, label_text, unit_text, input_field):
         """Erstellt ein QWidget mit einem QHBoxLayout, das Label, Eingabefeld und Einheit enthält."""
@@ -332,7 +310,7 @@ class MultiLayerTab(QWidget):
     def show_error_message(self, msg: str):
         self.error_label.setText(msg)
 
-    def add_layer(self):
+    def add_layer(self, select_new_row: bool = False):
         insert_at = self.layer_table.rowCount() - 1
         self.layer_table.insertRow(insert_at)
 
@@ -354,6 +332,44 @@ class MultiLayerTab(QWidget):
             self.layer_table.setItem(insert_at, col, item)
 
         self.update_graphics()
+
+        if select_new_row:
+            self.layer_table.setCurrentCell(insert_at, 1)
+            item = self.layer_table.item(insert_at, 1)
+            if item:
+                self.layer_table.editItem(item)
+
+    def remove_layer(self):
+        # Löscht ausgewählte Zeile oder oberste Nutzschicht; Kontaktphase (letzte Zeile) bleibt bestehen.
+        row_count = self.layer_table.rowCount()
+        if row_count <= 1:
+            return
+        selected_rows = {idx.row() for idx in self.layer_table.selectionModel().selectedIndexes()}
+        if not selected_rows:
+            target_row = row_count - 2
+        else:
+            target_row = min(selected_rows)
+        if target_row >= row_count - 1:  # Kontaktphase geschützt
+            return
+        self.layer_table.removeRow(target_row)
+        self.update_graphics()
+
+    def _show_layer_context_menu(self, pos):
+        index = self.layer_table.indexAt(pos)
+        if not index.isValid():
+            return
+
+        row = index.row()
+        menu = QMenu(self)
+        remove_action = menu.addAction("Zelle entfernen")
+        # Kontaktphase (letzte Zeile) nicht löschbar
+        if row == self.layer_table.rowCount() - 1:
+            remove_action.setEnabled(False)
+
+        action = menu.exec(self.layer_table.mapToGlobal(pos))
+        if action == remove_action and remove_action.isEnabled():
+            self.layer_table.removeRow(row)
+            self.update_graphics()
 
     def _finalize_pending_table_edits(self):
         """
@@ -454,13 +470,6 @@ class MultiLayerTab(QWidget):
                     self.layer_table.blockSignals(False)
         except ValueError:
             pass
-        self.update_graphics()
-
-
-    def remove_layer(self):
-        row_count = self.layer_table.rowCount()
-        if row_count > 1:
-            self.layer_table.removeRow(row_count - 2)  # Entferne oberste Nutzschicht, nicht Kontaktphase
         self.update_graphics()
 
     def update_graphics(self):
