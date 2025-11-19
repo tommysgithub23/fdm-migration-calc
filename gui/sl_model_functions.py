@@ -279,7 +279,14 @@ def plot_results_area(results_area, t_max, dt, save_path=None):
     plt.show()
 
 
-def plot_migration_surface_over_parameter(param_name, param_values, fixed_params, simulation_case="worst"):
+def plot_migration_surface_over_parameter(
+    param_name,
+    param_values,
+    fixed_params,
+    simulation_case="worst",
+    figure=None,
+    show=True,
+):
     """
     Plottet eine 3D-Oberfläche der Migrationsmenge über die Zeit für verschiedene Werte eines Parameters.
 
@@ -309,14 +316,23 @@ def plot_migration_surface_over_parameter(param_name, param_values, fixed_params
             time_axis.append(t)
             migration_axis.append(migration_data[i])
 
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    created_figure = False
+    if figure is None:
+        figure = plt.figure(figsize=(12, 8))
+        created_figure = True
+    else:
+        figure.clear()
+
+    ax = figure.add_subplot(111, projection='3d')
     surf = ax.plot_trisurf(param_axis, time_axis, migration_axis, cmap=cm.viridis, linewidth=0.2)
 
     ax.set_xlabel(f'{param_name} Wert', fontsize=12)
     ax.set_ylabel('Zeit [Tage]', fontsize=12)
     ax.set_zlabel('Migration [mg/dm²]', fontsize=12)
     ax.set_title(f'Migration über Zeit und {param_name}', fontsize=14)
-    fig.colorbar(surf, shrink=0.5, aspect=5)
-    plt.tight_layout()
-    plt.show()
+    figure.colorbar(surf, shrink=0.5, aspect=5, pad=0.1)
+    figure.tight_layout()
+
+    if created_figure and show:
+        plt.show()
+    return figure, ax

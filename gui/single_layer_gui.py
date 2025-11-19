@@ -18,7 +18,11 @@ from sl_model_package.EFSA_extended import (
     compute_eta_min_efsa,
     DEFAULT_MATERIAL,
 )
-from sl_model_functions import (calculate_max_cp0, migrationsmodell_piringer)
+from sl_model_functions import (
+    calculate_max_cp0,
+    migrationsmodell_piringer,
+    plot_migration_surface_over_parameter,
+)
 from tooltip_helper import DelayedToolTipHelper
 
 
@@ -92,18 +96,20 @@ class SingleLayerTab(QWidget):
         sl_phy_chem_layout = self.create_phy_chem_inputs()
         sl_geo_layout = self.create_geo_inputs()
         sl_graphical_layout = self.create_grafical_setup()
+        self.graphical_container = QWidget()
+        self.graphical_container.setLayout(sl_graphical_layout)
 
         # Layout für die rechte Seite (geometrische Eingaben + Grafik)
-        sl_input_tab_right_layout = QVBoxLayout()
-        sl_input_tab_right_layout.addLayout(sl_geo_layout)
-        sl_input_tab_right_layout.addLayout(sl_graphical_layout)
+        self.right_column_layout = QVBoxLayout()
+        self.right_column_layout.addLayout(sl_geo_layout)
+        self.right_column_layout.addWidget(self.graphical_container)
 
         # Hauptlayout horizontal kombinieren (linke und rechte Seite)
         sl_input_tab_layout = QHBoxLayout()
         sl_input_tab_layout.setSpacing(20)
         sl_input_tab_layout.setContentsMargins(0, 0, 0, 0)
         sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
-        sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
+        sl_input_tab_layout.addLayout(self.right_column_layout, 2)  # Geometrie + Grafik
 
         # Fertiges Layout hinzufügen
         self.main_layout.addLayout(sl_input_tab_layout)
@@ -416,19 +422,13 @@ class SingleLayerTab(QWidget):
         self.start_button.clicked.connect(self.start_calculation)  # Signal verbinden
         error_button_layout.addWidget(self.start_button, 0)
 
-        # 3D-Plot Migration Button hinzufügen
-        self.plot_surface_button = QPushButton("Parametervariation")
-        self.plot_surface_button.setMinimumWidth(170)
-        self.plot_surface_button.setFixedHeight(28)
-        self.plot_surface_button.clicked.connect(self.plot_migration_surface)
-        error_button_layout.addWidget(self.plot_surface_button, 0)
+        # (Entfernt: 3D-Plot Migration Button)
 
         layout.addLayout(error_button_layout)
         
         return layout
 
     def plot_migration_surface(self):
-        from sl_model_functions import plot_migration_surface_over_parameter
         from PySide6.QtWidgets import QInputDialog, QDialog, QDialogButtonBox, QVBoxLayout, QFormLayout, QLineEdit
 
         if not self.validate_inputs():
@@ -840,6 +840,54 @@ class ResultsPopup(QWidget):
             self.figure.savefig(file_path, format="pdf")
 
 
+class ParameterVariationPopup(QWidget):
+    """Popup-Fenster zur Darstellung der Parametervariation."""
+
+    def __init__(self, parameter_name, parameter_values, fixed_params, simulation_case):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.parameter_values = parameter_values
+        self.fixed_params = fixed_params
+        self.simulation_case = simulation_case
+
+        self.setWindowTitle("Parametervariation")
+        self.setGeometry(120, 120, 900, 650)
+
+        layout = QVBoxLayout(self)
+        self.figure = Figure(figsize=(11, 6))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+
+        self.summary_label = QLabel("")
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        self._plot_surface()
+        self._update_summary()
+
+    def _plot_surface(self):
+        self.figure.clear()
+        plot_migration_surface_over_parameter(
+            self.parameter_name,
+            self.parameter_values,
+            self.fixed_params,
+            simulation_case=self.simulation_case,
+            figure=self.figure,
+            show=False,
+        )
+        self.canvas.draw()
+
+    def _update_summary(self):
+        if not self.parameter_values:
+            return
+        summary = (
+            f"<b>Parameter:</b> {self.parameter_name}<br>"
+            f"<b>Bereich:</b> {self.parameter_values[0]:.3g} – {self.parameter_values[-1]:.3g}"
+            f" ({len(self.parameter_values)} Schritte)"
+        )
+        self.summary_label.setText(summary)
+
+
 class EFSAExtendedTab(QWidget):
     """
     EFSA-Tool als Unter-Tab im Single-Layer-Bereich.
@@ -1085,15 +1133,269 @@ class EFSAExtendedTab(QWidget):
 
 
 class ParameterVariationTab(SingleLayerTab):
-    """Abgeleitete Variante, die auf Parametervariation fokussiert."""
+    """Abgeleitete Variante mit Fokus auf Parametervariationen."""
 
     def __init__(self):
+        self.parameter_options = [
+            "T_C",
+            "M_r",
+            "c_P0",
+            "P_density",
+            "F_density",
+            "K_PF",
+            "V_P",
+            "V_F",
+            "d_P",
+            "d_F",
+            "A_PF",
+        ]
+        self.parameter_units = {
+            "T_C": "°C",
+            "M_r": "g/mol",
+            "c_P0": "mg/kg",
+            "P_density": "g/cm³",
+            "F_density": "g/cm³",
+            "K_PF": "-",
+            "V_P": "cm³",
+            "V_F": "cm³",
+            "d_P": "cm",
+            "d_F": "cm",
+            "A_PF": "dm²",
+        }
         super().__init__()
-        if hasattr(self, "start_button"):
-            self.start_button.hide()
-        if hasattr(self, "plot_surface_button"):
-            self.plot_surface_button.setText("Berechnung starten")
-            self.plot_surface_button.setMinimumWidth(200)
+
+        # Entferne die ursprüngliche Platzierung des Fehlerlabels
+        if self.error_label.parent() is not None:
+            try:
+                self.main_layout.removeWidget(self.error_label)
+            except Exception:
+                pass
+            self.error_label.setParent(None)
+
+        self._configure_parameter_widget()
+        self._retarget_start_button()
+        self._reposition_error_and_button()
+
+    def _configure_parameter_widget(self):
+        self.parameter_widget = QWidget()
+        controls_layout = QVBoxLayout(self.parameter_widget)
+        controls_layout.setSpacing(6)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+
+        controls_label = QLabel("<b>Parametervariation</b>")
+        controls_label.setAlignment(Qt.AlignLeft)
+        controls_layout.addWidget(controls_label)
+
+        self.parameter_dropdown = QComboBox()
+        self.parameter_dropdown.addItems(self.parameter_options)
+        self._apply_input_width(self.parameter_dropdown)
+        controls_layout.addWidget(self._create_parameter_form_row("Parameter", self.parameter_dropdown))
+
+        self.param_min_input = QLineEdit()
+        self.param_max_input = QLineEdit()
+        self.param_steps_input = QLineEdit("6")
+        for field in (self.param_min_input, self.param_max_input, self.param_steps_input):
+            field.setFixedHeight(22)
+            field.setAlignment(Qt.AlignRight)
+            field.setFixedWidth(self.input_width)
+
+        min_widget, self.param_min_unit_label = self._create_range_row("Minimum", self.param_min_input)
+        max_widget, self.param_max_unit_label = self._create_range_row("Maximum", self.param_max_input)
+        steps_widget, _ = self._create_range_row("Anzahl Schritte", self.param_steps_input, with_unit=False)
+
+        controls_layout.addWidget(min_widget)
+        controls_layout.addWidget(max_widget)
+        controls_layout.addWidget(steps_widget)
+        controls_layout.addStretch()
+
+        self.parameter_dropdown.currentTextChanged.connect(self._update_parameter_range_defaults)
+        self._update_parameter_range_defaults()
+
+        if hasattr(self, "right_column_layout") and hasattr(self, "graphical_container"):
+            self._detach_graph_error_section()
+            self.right_column_layout.removeWidget(self.graphical_container)
+            self.graphical_container.setParent(None)
+            combined_layout = QHBoxLayout()
+            combined_layout.setSpacing(12)
+            combined_layout.setContentsMargins(0, 0, 0, 0)
+            combined_layout.addWidget(self.graphical_container, 1)
+            combined_layout.addWidget(self.parameter_widget, 0)
+            combined_widget = QWidget()
+            combined_widget.setLayout(combined_layout)
+            self.right_column_layout.addWidget(combined_widget)
+
+    def _retarget_start_button(self):
+        try:
+            self.start_button.clicked.disconnect()
+        except Exception:
+            pass
+        self.start_button.setText("Berechnung starten")
+        self.start_button.clicked.connect(self.start_parameter_variation)
+
+    def _detach_graph_error_section(self):
+        graph_layout = self.graphical_container.layout() if hasattr(self, "graphical_container") else None
+        if not graph_layout or graph_layout.count() == 0:
+            return
+        last_index = graph_layout.count() - 1
+        last_item = graph_layout.itemAt(last_index)
+        if not last_item or not last_item.layout():
+            return
+        graph_layout.takeAt(last_index)
+        sub_layout = last_item.layout()
+        while sub_layout.count():
+            sub_item = sub_layout.takeAt(0)
+            widget = sub_item.widget()
+            if widget:
+                widget.setParent(None)
+
+    def _reposition_error_and_button(self):
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 10, 0, 0)
+        button_row.setSpacing(12)
+        button_row.addWidget(self.error_label, 1)
+        button_row.addStretch(1)
+        button_row.addWidget(self.start_button, 0, Qt.AlignRight)
+        self.main_layout.addLayout(button_row)
+
+    def _create_parameter_form_row(self, label_text: str, widget: QWidget) -> QWidget:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(label_text)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        label.setMinimumWidth(90)
+        row.addWidget(label)
+        row.addWidget(widget)
+        row.addStretch()
+        container = QWidget()
+        container.setLayout(row)
+        return container
+
+    def _create_range_row(self, label_text: str, widget: QLineEdit, with_unit: bool = True):
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(label_text)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        label.setMinimumWidth(90)
+        unit_label = QLabel("" if not with_unit else "-")
+        unit_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        unit_label.setMinimumWidth(40)
+        row.addWidget(label)
+        row.addWidget(widget)
+        if with_unit:
+            row.addWidget(unit_label)
+        row.addStretch(1)
+        container = QWidget()
+        container.setLayout(row)
+        return container, unit_label if with_unit else None
+
+    def _parameter_input_fields(self):
+        return {
+            "T_C": self.T_C_input,
+            "M_r": self.M_r_input,
+            "c_P0": self.c_P0_input,
+            "P_density": self.P_density_input,
+            "F_density": self.F_density_input,
+            "K_PF": self.K_PF_input,
+            "V_P": self.V_P_input,
+            "V_F": self.V_F_input,
+            "d_P": self.d_P_input,
+            "d_F": self.d_F_input,
+            "A_PF": self.A_PF_input,
+        }
+
+    def _update_parameter_range_defaults(self):
+        parameter = self.parameter_dropdown.currentText()
+        unit = self.parameter_units.get(parameter, "")
+        if self.param_min_unit_label and unit:
+            self.param_min_unit_label.setText(unit)
+        if self.param_max_unit_label and unit:
+            self.param_max_unit_label.setText(unit)
+
+        source_field = self._parameter_input_fields().get(parameter)
+        if source_field:
+            current_value = source_field.text()
+            if current_value:
+                self.param_min_input.setText(current_value)
+                self.param_max_input.setText(current_value)
+                return
+        self.param_min_input.clear()
+        self.param_max_input.clear()
+
+    def _parse_range_value(self, field: QLineEdit, label: str, as_int: bool = False):
+        text = field.text().strip()
+        if not text:
+            self.mark_field_invalid(field)
+            raise ValueError(f"{label} darf nicht leer sein.")
+        if "," in text:
+            self.mark_field_invalid(field)
+            raise ValueError(f"{label} bitte '.' als Dezimaltrennzeichen verwenden.")
+        try:
+            value = int(text) if as_int else float(text)
+            if value <= 0:
+                raise ValueError
+            self.mark_field_valid(field)
+            return value
+        except ValueError:
+            self.mark_field_invalid(field)
+            raise ValueError(f"{label} muss eine positive Zahl sein.")
+
+    def start_parameter_variation(self):
+        if not self.validate_inputs():
+            self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
+            return
+
+        parameter = self.parameter_dropdown.currentText()
+        try:
+            min_val = self._parse_range_value(self.param_min_input, "Minimum")
+            max_val = self._parse_range_value(self.param_max_input, "Maximum")
+            steps = self._parse_range_value(self.param_steps_input, "Anzahl Schritte", as_int=True)
+        except ValueError as exc:
+            self.show_error_message(str(exc))
+            return
+
+        if max_val <= min_val:
+            self.show_error_message("Maximum muss größer als Minimum sein.")
+            self.mark_field_invalid(self.param_max_input)
+            return
+        if steps < 2:
+            self.show_error_message("Anzahl Schritte muss mindestens 2 sein.")
+            self.mark_field_invalid(self.param_steps_input)
+            return
+
+        self.mark_field_valid(self.param_max_input)
+        self.mark_field_valid(self.param_steps_input)
+
+        param_range = list(np.linspace(min_val, max_val, steps))
+
+        fixed_params = {
+            "M_r": float(self.M_r_input.text()),
+            "T_C": float(self.T_C_input.text()),
+            "c_P0": float(self.c_P0_input.text()),
+            "Material": self.material_dropdown.currentText(),
+            "P_density": float(self.P_density_input.text()),
+            "F_density": float(self.F_density_input.text()),
+            "K_PF": float(self.K_PF_input.text()),
+            "t_max": float(self.t_max_input.text()),
+            "V_P": float(self.V_P_input.text()),
+            "V_F": float(self.V_F_input.text()),
+            "d_P": float(self.d_P_input.text()),
+            "d_F": float(self.d_F_input.text()),
+            "A_PF": float(self.A_PF_input.text()),
+            "dt": float(self.dt_input.text()),
+            "D_P_known": None if not self.D_P_known_input.text() else float(self.D_P_known_input.text()),
+            "simulation_case": self.sim_case_dropdown.currentText(),
+        }
+
+        popup = ParameterVariationPopup(
+            parameter,
+            param_range,
+            fixed_params,
+            simulation_case=self.sim_case_dropdown.currentText(),
+        )
+        popup.show()
+        self.variation_popup = popup
 
 
 class SingleLayerSuiteTab(QWidget):
