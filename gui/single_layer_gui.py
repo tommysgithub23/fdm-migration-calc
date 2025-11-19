@@ -96,20 +96,18 @@ class SingleLayerTab(QWidget):
         sl_phy_chem_layout = self.create_phy_chem_inputs()
         sl_geo_layout = self.create_geo_inputs()
         sl_graphical_layout = self.create_grafical_setup()
-        self.graphical_container = QWidget()
-        self.graphical_container.setLayout(sl_graphical_layout)
 
         # Layout für die rechte Seite (geometrische Eingaben + Grafik)
-        self.right_column_layout = QVBoxLayout()
-        self.right_column_layout.addLayout(sl_geo_layout)
-        self.right_column_layout.addWidget(self.graphical_container)
+        sl_input_tab_right_layout = QVBoxLayout()
+        sl_input_tab_right_layout.addLayout(sl_geo_layout)
+        sl_input_tab_right_layout.addLayout(sl_graphical_layout)
 
         # Hauptlayout horizontal kombinieren (linke und rechte Seite)
         sl_input_tab_layout = QHBoxLayout()
         sl_input_tab_layout.setSpacing(20)
         sl_input_tab_layout.setContentsMargins(0, 0, 0, 0)
         sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
-        sl_input_tab_layout.addLayout(self.right_column_layout, 2)  # Geometrie + Grafik
+        sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
 
         # Fertiges Layout hinzufügen
         self.main_layout.addLayout(sl_input_tab_layout)
@@ -1164,21 +1162,41 @@ class ParameterVariationTab(SingleLayerTab):
         }
         super().__init__()
 
-        # Entferne die ursprüngliche Platzierung des Fehlerlabels
-        if self.error_label.parent() is not None:
-            try:
-                self.main_layout.removeWidget(self.error_label)
-            except Exception:
-                pass
-            self.error_label.setParent(None)
+    def create_grafical_setup(self):
+        """Erstellt den Bereich für die grafische Darstellung samt Parametereingaben."""
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self._configure_parameter_widget()
-        self._retarget_start_button()
-        self._reposition_error_and_button()
+        self.graphics_view = QGraphicsView()
+        self.graphics_scene = QGraphicsScene()
+        self.graphics_view.setScene(self.graphics_scene)
+        self.graphics_view.setFixedHeight(220)
+        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-    def _configure_parameter_widget(self):
-        self.parameter_widget = QWidget()
-        controls_layout = QVBoxLayout(self.parameter_widget)
+        self.rect_f.setRect(0, 0, self.default_d_F * 40, 100)
+        self.rect_f.setBrush(self.color_init_F)
+        self.graphics_scene.addItem(self.rect_f)
+
+        self.rect_p.setRect(0, 0, self.default_d_P * 40, 100)
+        self.rect_p.setBrush(self.color_init_P)
+        self.graphics_scene.addItem(self.rect_p)
+
+        graph_section = QVBoxLayout()
+        graph_section.setSpacing(6)
+        graph_section.setContentsMargins(0, 0, 0, 0)
+        headline_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        headline_label.setAlignment(Qt.AlignLeft)
+        graph_section.addWidget(headline_label)
+        graph_section.addWidget(self.graphics_view)
+
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(12)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addLayout(graph_section, 1)
+
+        controls_layout = QVBoxLayout()
         controls_layout.setSpacing(6)
         controls_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1208,54 +1226,26 @@ class ParameterVariationTab(SingleLayerTab):
         controls_layout.addWidget(steps_widget)
         controls_layout.addStretch()
 
+        content_layout.addLayout(controls_layout, 0)
+        layout.addLayout(content_layout)
+
         self.parameter_dropdown.currentTextChanged.connect(self._update_parameter_range_defaults)
+
+        error_button_layout = QHBoxLayout()
+        self.error_label.setFixedHeight(30)
+        error_button_layout.addWidget(self.error_label, 1)
+
+        self.start_button = QPushButton("Berechnung starten")
+        self.start_button.setMinimumWidth(150)
+        self.start_button.setFixedHeight(28)
+        self.start_button.clicked.connect(self.start_parameter_variation)
+        error_button_layout.addWidget(self.start_button, 0)
+
+        layout.addLayout(error_button_layout)
+
         self._update_parameter_range_defaults()
 
-        if hasattr(self, "right_column_layout") and hasattr(self, "graphical_container"):
-            self._detach_graph_error_section()
-            self.right_column_layout.removeWidget(self.graphical_container)
-            self.graphical_container.setParent(None)
-            combined_layout = QHBoxLayout()
-            combined_layout.setSpacing(12)
-            combined_layout.setContentsMargins(0, 0, 0, 0)
-            combined_layout.addWidget(self.graphical_container, 1)
-            combined_layout.addWidget(self.parameter_widget, 0)
-            combined_widget = QWidget()
-            combined_widget.setLayout(combined_layout)
-            self.right_column_layout.addWidget(combined_widget)
-
-    def _retarget_start_button(self):
-        try:
-            self.start_button.clicked.disconnect()
-        except Exception:
-            pass
-        self.start_button.setText("Berechnung starten")
-        self.start_button.clicked.connect(self.start_parameter_variation)
-
-    def _detach_graph_error_section(self):
-        graph_layout = self.graphical_container.layout() if hasattr(self, "graphical_container") else None
-        if not graph_layout or graph_layout.count() == 0:
-            return
-        last_index = graph_layout.count() - 1
-        last_item = graph_layout.itemAt(last_index)
-        if not last_item or not last_item.layout():
-            return
-        graph_layout.takeAt(last_index)
-        sub_layout = last_item.layout()
-        while sub_layout.count():
-            sub_item = sub_layout.takeAt(0)
-            widget = sub_item.widget()
-            if widget:
-                widget.setParent(None)
-
-    def _reposition_error_and_button(self):
-        button_row = QHBoxLayout()
-        button_row.setContentsMargins(0, 10, 0, 0)
-        button_row.setSpacing(12)
-        button_row.addWidget(self.error_label, 1)
-        button_row.addStretch(1)
-        button_row.addWidget(self.start_button, 0, Qt.AlignRight)
-        self.main_layout.addLayout(button_row)
+        return layout
 
     def _create_parameter_form_row(self, label_text: str, widget: QWidget) -> QWidget:
         row = QHBoxLayout()
