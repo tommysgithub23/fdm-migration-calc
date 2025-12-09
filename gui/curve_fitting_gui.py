@@ -39,6 +39,7 @@ class CurveFittingTab(QWidget):
         self.canvas: FigureCanvas | None = None
         self.saved_plot_path: str | None = None
         self._validation_message: str = ""
+        self._last_plot_data: dict | None = None
 
         self.label_width = 60
         self.input_width = 90
@@ -330,21 +331,25 @@ class CurveFittingTab(QWidget):
                 k_pf,
                 c_p0,
             )
+            summary_text = f"<b> Zusammenfassung </b><br> Diffusionskoeffizient (berechnet): {optimal_D_P:.3e} cm²/s"
+            self.result_label.setText(summary_text + "\n")
+
+            self._last_plot_data = {
+                "time_days": (np.arange(0, t_max + dt, dt) / (24 * 3600)).tolist(),
+                "simulation": optimal_simulation.tolist(),
+                "measurement_days": (np.array(measurement_seconds) / (24 * 3600)).tolist(),
+                "measurement_values": measured_values.tolist(),
+                "D_P": optimal_D_P,
+            }
+
             figure = self._current_figure()
-            self._display_figure(figure)
+            self._display_figure(figure, summary_text=summary_text)
         except Exception as exc:  # pylint: disable=broad-except
             self._set_error(f"Fehler bei der Berechnung: {exc}")
             return
 
         self.saved_plot_path = save_path
-        if save_path:
-            self.result_label.setText(
-                f"Berechneter Diffusionskoeffizient: {optimal_D_P:.3e} cm²/s\n"
-            )
-        else:
-            self.result_label.setText(
-                f"Berechneter Diffusionskoeffizient: {optimal_D_P:.3e} cm²/s\n"
-            )
+        # result_label bereits gesetzt; kein weiterer Text nötig
 
     def _collect_measurements(self) -> Tuple[List[float], List[float]]:
         times: List[float] = []
@@ -381,14 +386,14 @@ class CurveFittingTab(QWidget):
 
         return times, values
 
-    def _display_figure(self, figure) -> None:
+    def _display_figure(self, figure, summary_text: str = "") -> None:
         if figure is None:
             return
         from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton, QFileDialog, QHBoxLayout
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("Migration Plot")
+        dialog.setWindowTitle("Berechnungsergebnisse - Diffusionskoeffizient")
         dialog.setAttribute(Qt.WA_DeleteOnClose, True)
         layout = QVBoxLayout(dialog)
 
@@ -396,22 +401,31 @@ class CurveFittingTab(QWidget):
         canvas.draw()
         layout.addWidget(canvas)
 
+        summary = summary_text or self.result_label.text() or ""
+        self.plot_summary_label = QLabel(summary)
+        self.plot_summary_label.setWordWrap(True)
+        layout.addWidget(self.plot_summary_label)
+
         button_row = QHBoxLayout()
         button_row.addStretch(1)
         save_button = QPushButton("Plot speichern")
-        save_button.setProperty("appStyle", True)
-        save_button.setMinimumWidth(140)
+        save_button.setProperty("appStyle", False)
+        save_button.setAutoDefault(False)
+        save_button.setDefault(False)
+        # save_button.setMinimumWidth(140)
         save_button.clicked.connect(lambda: self._save_current_figure(figure))
         button_row.addWidget(save_button)
 
-        close_button = QPushButton("Schließen")
-        close_button.setProperty("appStyle", True)
-        close_button.clicked.connect(dialog.accept)
-        button_row.addWidget(close_button)
+        export_button = QPushButton("CSV exportieren")
+        export_button.setProperty("appStyle", False)
+        export_button.setAutoDefault(False)
+        export_button.setDefault(False)
+        export_button.clicked.connect(self._export_plot_data)
+        button_row.addWidget(export_button)
 
         layout.addLayout(button_row)
 
-        dialog.resize(1200, 600)
+        dialog.setGeometry(100, 100, 800, 600)
         dialog.show()
 
     def _save_current_figure(self, figure) -> None:
@@ -430,6 +444,34 @@ class CurveFittingTab(QWidget):
             self.saved_plot_path = path
         except Exception as exc:  # pylint: disable=broad-except
             self._set_error(f"Plot konnte nicht gespeichert werden: {exc}", show_dialog=True)
+
+    def _export_plot_data(self) -> None:
+        if not self._last_plot_data:
+            self._set_error("Keine Plotdaten verfügbar. Bitte zuerst berechnen.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Plotdaten exportieren",
+            "",
+            "CSV (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("time_days,simulation\n")
+                for t, sim in zip(self._last_plot_data["time_days"], self._last_plot_data["simulation"]):
+                    handle.write(f"{t},{sim}\n")
+
+                handle.write("\nmeasurement_days,measurement_values\n")
+                for t, val in zip(self._last_plot_data["measurement_days"], self._last_plot_data["measurement_values"]):
+                    handle.write(f"{t},{val}\n")
+
+                handle.write(f"\nD_P,{self._last_plot_data['D_P']}\n")
+        except Exception as exc:  # pylint: disable=broad-except
+            self._set_error(f"CSV-Export fehlgeschlagen: {exc}", show_dialog=True)
 
     def _current_figure(self):
         import matplotlib.pyplot as plt

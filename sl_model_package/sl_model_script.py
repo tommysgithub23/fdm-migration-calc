@@ -49,7 +49,7 @@ if not os.path.exists(full_path):
     os.makedirs(full_path)
     
 # Speichern der Ergebnisse als NumPy Datei im Containerformat für die spätere Weiterverarbeitung
-np.save(os.path.join(full_path, 'results_area.np'), results_area)
+# np.save(os.path.join(full_path, 'results_area.np'), results_area)
 
 # Plotten der Ergebnisse
 # plot_results_area(results_area, t_max, dt, save_path=full_path)

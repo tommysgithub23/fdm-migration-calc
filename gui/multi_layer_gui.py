@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
-    QSizePolicy, QComboBox, QApplication, QDialog, QMenu
+    QSizePolicy, QComboBox, QApplication, QDialog, QMenu, QTabWidget
 )
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QColor, QPalette
@@ -9,12 +9,13 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
 from tooltip_helper import DelayedToolTipHelper
 
+
 class MultiLayerTab(QWidget):
     def __init__(self):
         super().__init__()
         self.material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
         self.tooltip_helper = DelayedToolTipHelper(parent=self)
-        self.label_width = 50
+        self.label_width = 60
         self.input_width = 90
         self.unit_width = 20
 
@@ -24,7 +25,7 @@ class MultiLayerTab(QWidget):
         # Gemeinsames zweispaltiges Layout (wie im Single-Layer-Tab)
         self.split_layout = QHBoxLayout()
         self.split_layout.setSpacing(20)
-        self.split_layout.setContentsMargins(0, 0, 0, 0)
+        self.split_layout.setContentsMargins(0, 12, 0, 0)
         self.main_layout.addLayout(self.split_layout)
 
         # Eingabebereich (linke Spalte)
@@ -95,17 +96,17 @@ class MultiLayerTab(QWidget):
         table_section = QVBoxLayout()
         table_section.setSpacing(6)
         table_section.setContentsMargins(0, 0, 0, 0)
-        table_label = QLabel("<b>Schichten-Tabelle</b>")
+        table_label = QLabel("<b>Schichtaufbau</b>")
         table_label.setAlignment(Qt.AlignLeft)
         table_section.addWidget(table_label)
         table_section.addWidget(self.layer_table)
         button_row = QHBoxLayout()
         button_row.setSpacing(6)
         add_btn = QPushButton("Layer hinzufügen")
-        add_btn.setFixedHeight(26)
+        add_btn.setProperty("appStyle", False)
         add_btn.clicked.connect(lambda: self.add_layer(select_new_row=True))
         remove_btn = QPushButton("Layer entfernen")
-        remove_btn.setFixedHeight(26)
+        remove_btn.setProperty("appStyle", False)
         remove_btn.clicked.connect(self.remove_layer)
         button_row.addWidget(add_btn)
         button_row.addWidget(remove_btn)
@@ -116,8 +117,8 @@ class MultiLayerTab(QWidget):
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setFixedHeight(220)
-        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setFixedHeight(160)
+        self.graphics_view.setMaximumWidth(250)
         self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         graphics_section = QVBoxLayout()
@@ -145,6 +146,7 @@ class MultiLayerTab(QWidget):
         # Start-Button
         self.start_button = QPushButton("Berechnung starten")
         self.start_button.setFixedSize(150, 28)
+        self.start_button.setProperty("appStyle", True)
         self.tooltip_helper.register(self.start_button, "Führt die Simulation mit den eingegebenen Schichten aus.")
 
         self.start_button.pressed.connect(self._finalize_pending_table_edits)
@@ -558,9 +560,24 @@ class MultiLayerTab(QWidget):
             layout.addWidget(canvas)
 
         close_button = QPushButton("Schließen")
+        close_button.setProperty("appStyle", True)
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button, alignment=Qt.AlignRight)
 
         dialog.resize(800, 1200)
         dialog.show()
         self.results_dialog = dialog
+
+
+class MultiLayerSuiteTab(QWidget):
+    """
+    Container-Tab für das Multi-Layer-Modell mit eigenen Unter-Tabs.
+    Aktuell nur 'Migrationsberechnung', kann bei Bedarf erweitert werden.
+    """
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        self.sub_tabs = QTabWidget()
+        self.sub_tabs.addTab(MultiLayerTab(), "Migrationsberechnung")
+        layout.addWidget(self.sub_tabs)

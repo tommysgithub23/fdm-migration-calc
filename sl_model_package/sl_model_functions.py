@@ -272,6 +272,7 @@ def plot_results_area(results_area, t_max, dt, save_path=None):
     # Achsenbeschriftungen und Titel
     plt.xlabel('Zeit $[Tage]$', fontsize=14)
     plt.ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
+    plt.grid(True, which='both', linestyle='--', alpha=0.7)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.show()

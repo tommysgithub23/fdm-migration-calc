@@ -6,11 +6,12 @@ import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPalette, QTextDocument
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog,
                                QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
+                               QStyledItemDelegate, QMessageBox, QStyle, QStyleOptionViewItem,
                                QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
 from sl_model_package.EFSA_extended import (
     generate_curves,
@@ -35,7 +36,7 @@ class SingleLayerTab(QWidget):
         super().__init__()
 
         self.tooltip_helper = DelayedToolTipHelper(parent=self)
-        self.label_width = 50
+        self.label_width = 60
         self.input_width = 90
         self.unit_width = 20
         self._validation_messages = []
@@ -106,7 +107,7 @@ class SingleLayerTab(QWidget):
         # Hauptlayout horizontal kombinieren (linke und rechte Seite)
         sl_input_tab_layout = QHBoxLayout()
         sl_input_tab_layout.setSpacing(20)
-        sl_input_tab_layout.setContentsMargins(0, 0, 0, 0)
+        sl_input_tab_layout.setContentsMargins(0, 12, 0, 12)
         sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
         sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
         sl_input_tab_layout.setAlignment(Qt.AlignTop)
@@ -412,6 +413,7 @@ class SingleLayerTab(QWidget):
         self.start_button = QPushButton("Berechnung starten")
         self.start_button.setMinimumWidth(150)
         self.start_button.setFixedHeight(28)
+        self.start_button.setProperty("appStyle", True)
         self.start_button.clicked.connect(self.start_calculation)
 
         button_row = QHBoxLayout()
@@ -748,7 +750,7 @@ class SingleLayerTab(QWidget):
 class ResultsPopup(QWidget):
     def __init__(self, results_area, t_max, dt):
         super().__init__()
-        self.setWindowTitle("Berechnungsergebnisse")
+        self.setWindowTitle("Berechnungsergebnisse - Migrationsberechnung")
         self.setGeometry(100, 100, 800, 600)  # Fenstergröße setzen
 
         self.results_area = results_area
@@ -773,18 +775,19 @@ class ResultsPopup(QWidget):
         # Platzhalter für Abstand nach links
         button_layout.addStretch()
 
-        # Export-Button für Ergebnisse (CSV)
-        export_csv_button = QPushButton("Ergebnisse als CSV exportieren")
-        export_csv_button.setFixedSize(200, 40)  # Größe des Buttons anpassen
-        export_csv_button.clicked.connect(self.export_results)
-        button_layout.addWidget(export_csv_button)
 
         # Export-Button für Plot (PDF)
-        export_pdf_button = QPushButton("Plot als PDF exportieren")
-        export_pdf_button.setFixedSize(200, 40)  # Größe des Buttons anpassen
+        export_pdf_button = QPushButton("Plot speichern")
+        export_pdf_button.setProperty("appStyle", True)
         export_pdf_button.clicked.connect(self.export_plot)
         button_layout.addWidget(export_pdf_button)
 
+        # Export-Button für Ergebnisse (CSV)
+        export_csv_button = QPushButton("CSV exportieren")
+        export_csv_button.setProperty("appStyle", True)
+        export_csv_button.clicked.connect(self.export_results)
+        button_layout.addWidget(export_csv_button)
+        
         layout.addLayout(button_layout)
 
         # Daten in die Widgets einfügen
@@ -795,7 +798,7 @@ class ResultsPopup(QWidget):
         """Zeigt eine Zusammenfassung der Ergebnisse."""
         max_migration = max(self.results_area)
         summary = f"""
-        <b>Zusammenfassung:</b><br>
+        <b>Zusammenfassung</b><br>
         Maximale Migration: {max_migration:.2f} mg/dm²<br>
         Simulierte Zeit: {self.t_max / (3600 * 24):.2f} Tage
         """
@@ -811,9 +814,10 @@ class ResultsPopup(QWidget):
         ax = self.figure.add_subplot(111)
         ax.clear()
         ax.plot(time_days, self.results_area, linewidth=2, color='#F06D1D')
-        ax.set_xlabel('Zeit $[Tage]$', fontsize=11)
-        ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=11)
+        ax.set_xlabel('Zeit [Tage]', fontsize=12)
+        ax.set_ylabel('spez. Migrationsmenge [mg/dm²]', fontsize=12)
         ax.tick_params(axis='both', which='major', labelsize=11)
+        ax.grid(True, linestyle='--', alpha=0.7, linewidth=0.7)
         self.canvas.draw()
 
     def export_results(self):
@@ -822,7 +826,7 @@ class ResultsPopup(QWidget):
         if file_path:
             with open(file_path, "w", newline="") as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(["Zeit (Tage)", "Migration (mg/dm²)"])
+                writer.writerow(["Zeit (Tage)", "Migration (mg/dm^2)"])
                 time_days = np.arange(0, self.t_max / (3600 * 24), self.dt / (3600 * 24))
                 for time, result in zip(time_days, self.results_area):
                     writer.writerow([time, result])
@@ -837,15 +841,16 @@ class ResultsPopup(QWidget):
 class ParameterVariationPopup(QWidget):
     """Popup-Fenster zur Darstellung der Parametervariation."""
 
-    def __init__(self, parameter_name, parameter_values, fixed_params, simulation_case):
+    def __init__(self, parameter_name, parameter_values, fixed_params, simulation_case, parameter_unit=""):
         super().__init__()
         self.parameter_name = parameter_name
         self.parameter_values = parameter_values
         self.fixed_params = fixed_params
         self.simulation_case = simulation_case
+        self.parameter_unit = parameter_unit
 
-        self.setWindowTitle("Parametervariation")
-        self.setGeometry(120, 120, 900, 650)
+        self.setWindowTitle("Berechnungsergebnisse - Parametervariation")
+        self.setGeometry(100, 100, 800, 600)
 
         layout = QVBoxLayout(self)
         self.figure = Figure(figsize=(11, 6))
@@ -855,6 +860,14 @@ class ParameterVariationPopup(QWidget):
         self.summary_label = QLabel("")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        self.save_button = QPushButton("Plot speichern")
+        self.save_button.setProperty("appStyle", False)
+        self.save_button.clicked.connect(self.save_plot)
+        button_row.addWidget(self.save_button)
+        layout.addLayout(button_row)
 
         self._plot_surface()
         self._update_summary()
@@ -874,12 +887,28 @@ class ParameterVariationPopup(QWidget):
     def _update_summary(self):
         if not self.parameter_values:
             return
+        unit_text = f" {self.parameter_unit}" if self.parameter_unit else ""
         summary = (
-            f"<b>Parameter:</b> {self.parameter_name}<br>"
-            f"<b>Bereich:</b> {self.parameter_values[0]:.3g} – {self.parameter_values[-1]:.3g}"
-            f" ({len(self.parameter_values)} Schritte)"
+            f"<b>Zusammenfassung</b><br>"
+            f"Parameter: {self.parameter_name}<br>"
+            f"Bereich: {self.parameter_values[0]:.3g} – {self.parameter_values[-1]:.3g}{unit_text}"
         )
         self.summary_label.setText(summary)
+
+    def save_plot(self):
+        """Speichert den Plot der Parametervariation."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Plot speichern",
+            "",
+            "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        try:
+            self.figure.savefig(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Speichern fehlgeschlagen", f"Plot konnte nicht gespeichert werden:\n{exc}")
 
 
 class EFSAExtendedTab(QWidget):
@@ -937,12 +966,15 @@ class EFSAExtendedTab(QWidget):
         button_row.setSpacing(6)
         import_btn = QPushButton("Messwerte importieren")
         import_btn.setFixedHeight(26)
+        import_btn.setProperty("appStyle", True)
         import_btn.clicked.connect(self._import_measurements)
         calc_btn = QPushButton("Berechnen")
         calc_btn.setFixedHeight(26)
+        calc_btn.setProperty("appStyle", True)
         calc_btn.clicked.connect(self.update_plots)
         export_btn = QPushButton("Plots exportieren")
         export_btn.setFixedHeight(26)
+        export_btn.setProperty("appStyle", True)
         export_btn.clicked.connect(self._export_plots)
         button_row.addWidget(import_btn)
         button_row.addWidget(calc_btn)
@@ -1227,12 +1259,16 @@ class ParameterVariationTab(SingleLayerTab):
         layout.addLayout(content_layout)
 
         self.parameter_dropdown.currentTextChanged.connect(self._update_parameter_range_defaults)
+        self.param_min_input.textChanged.connect(lambda _: self._validate_single_range_field(self.param_min_input, "Minimum"))
+        self.param_max_input.textChanged.connect(lambda _: self._validate_single_range_field(self.param_max_input, "Maximum"))
+        self.param_steps_input.textChanged.connect(lambda _: self._validate_single_range_field(self.param_steps_input, "Anzahl Schritte", as_int=True, min_value=2))
 
         layout.addStretch(1)
         self.error_label.setFixedHeight(30)
         self.start_button = QPushButton("Berechnung starten")
         self.start_button.setMinimumWidth(150)
         self.start_button.setFixedHeight(28)
+        self.start_button.setProperty("appStyle", True)
         self.start_button.clicked.connect(self.start_parameter_variation)
 
         button_row = QHBoxLayout()
@@ -1251,7 +1287,7 @@ class ParameterVariationTab(SingleLayerTab):
         row.setContentsMargins(0, 0, 0, 0)
         label = QLabel(label_text)
         label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        label.setMinimumWidth(90)
+        label.setMinimumWidth(60)
         row.addWidget(label)
         row.addWidget(widget)
         row.addStretch()
@@ -1265,7 +1301,7 @@ class ParameterVariationTab(SingleLayerTab):
         row.setContentsMargins(0, 0, 0, 0)
         label = QLabel(label_text)
         label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        label.setMinimumWidth(90)
+        label.setMinimumWidth(60)
         unit_label = QLabel("" if not with_unit else "-")
         unit_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         unit_label.setMinimumWidth(40)
@@ -1329,6 +1365,52 @@ class ParameterVariationTab(SingleLayerTab):
             self.mark_field_invalid(field)
             raise ValueError(f"{label} muss eine positive Zahl sein.")
 
+    def _validate_range_number(self, field: QLineEdit, label: str, as_int: bool = False, min_value: float = 0, set_message: bool = True) -> bool:
+        text = field.text().strip()
+        if not text:
+            if set_message:
+                self._add_validation_message(f"{label} darf nicht leer sein.")
+            self.mark_field_invalid(field)
+            return False
+        if "," in text:
+            if set_message:
+                self._add_validation_message(f"{label} bitte '.' als Dezimaltrennzeichen verwenden.")
+            self.mark_field_invalid(field)
+            return False
+        try:
+            value = int(text) if as_int else float(text)
+            if value < min_value:
+                raise ValueError
+            self.mark_field_valid(field)
+            return True
+        except ValueError:
+            if set_message:
+                self._add_validation_message(f"{label} muss {'eine ganze Zahl' if as_int else 'eine Zahl'} ≥ {min_value} sein.")
+            self.mark_field_invalid(field)
+            return False
+
+    def _validate_single_range_field(self, field: QLineEdit, label: str, as_int: bool = False, min_value: float = 0) -> None:
+        self._validate_range_number(field, label, as_int=as_int, min_value=min_value, set_message=False)
+
+    def _validate_parameter_inputs(self, set_message: bool = True) -> bool:
+        ok = True
+        ok &= self._validate_range_number(self.param_min_input, "Minimum", set_message=set_message)
+        ok &= self._validate_range_number(self.param_max_input, "Maximum", set_message=set_message)
+        ok &= self._validate_range_number(self.param_steps_input, "Anzahl Schritte", as_int=True, min_value=2, set_message=set_message)
+        return ok
+
+    def validate_inputs(self):
+        """Überprüft alle Eingaben inkl. Parametervariationsfelder."""
+        base_valid = super().validate_inputs()
+        range_valid = self._validate_parameter_inputs(set_message=True)
+        if base_valid and range_valid:
+            self.error_label.setText("")
+            return True
+        message = self._compose_validation_message()
+        if message:
+            self.show_error_message(message)
+        return False
+
     def start_parameter_variation(self):
         if not self.validate_inputs():
             self.show_error_message("Bitte korrigiere alle rot markierten Felder.")
@@ -1376,11 +1458,13 @@ class ParameterVariationTab(SingleLayerTab):
             "simulation_case": self.sim_case_dropdown.currentText(),
         }
 
+        unit = self.parameter_units.get(parameter, "")
         popup = ParameterVariationPopup(
             parameter,
             param_range,
             fixed_params,
             simulation_case=self.sim_case_dropdown.currentText(),
+            parameter_unit=unit,
         )
         popup.show()
         self.variation_popup = popup

@@ -326,10 +326,34 @@ def plot_migration_surface_over_parameter(
     ax = figure.add_subplot(111, projection='3d')
     surf = ax.plot_trisurf(param_axis, time_axis, migration_axis, cmap=cm.viridis, linewidth=0.2)
 
-    ax.set_xlabel(f'{param_name} Wert', fontsize=12)
+    def _format_param_label(name: str, unit: str | None = None) -> str:
+        # Unterstützt einfache Schreibweise wie "T_C" -> "T$_{C}$"
+        if "_" in name:
+            head, tail = name.split("_", 1)
+            name = f"{head}$_{{{tail}}}$"
+        if unit:
+            return f"{name} [{unit}]"
+        return name
+
+    unit = None
+    unit_map = {
+        "T_C": "°C",
+        "M_r": "g/mol",
+        "c_P0": "mg/kg",
+        "P_density": "g/cm³",
+        "F_density": "g/cm³",
+        "K_PF": "-",
+        "V_P": "cm³",
+        "V_F": "cm³",
+        "d_P": "cm",
+        "d_F": "cm",
+        "A_PF": "dm²",
+    }
+    unit = unit_map.get(param_name)
+
+    ax.set_xlabel(_format_param_label(param_name, unit), fontsize=12)
     ax.set_ylabel('Zeit [Tage]', fontsize=12)
     ax.set_zlabel('Migration [mg/dm²]', fontsize=12)
-    ax.set_title(f'Migration über Zeit und {param_name}', fontsize=14)
     figure.colorbar(surf, shrink=0.5, aspect=5, pad=0.1)
     figure.tight_layout()
 

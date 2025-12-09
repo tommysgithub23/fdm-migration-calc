@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel
-from PySide6.QtGui     import QPixmap, QIcon
-from PySide6.QtCore    import Qt
+from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import Qt
 from single_layer_gui import SingleLayerSuiteTab
-from multi_layer_gui import MultiLayerTab
+from multi_layer_gui import MultiLayerSuiteTab
 from curve_fitting_gui import CurveFittingTab
 import os
 
@@ -27,19 +27,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.main_layout = QVBoxLayout(central_widget)
 
-        # Einheitlicher Button-Style für alle Tabs
+        # Einheitlicher Button-Style für markierte Buttons (nicht global, damit einzelne Buttons nativ bleiben können)
         self.setStyleSheet(
             """
-            QPushButton {
+            QPushButton[appStyle="true"] {
                 background-color: #2c2c2c;
                 color: white;
                 border: 1px solid #F06D1D;
                 border-radius: 4px;
                 padding: 4px 10px;
             }
-            QPushButton:hover { background-color: #333333; }
-            QPushButton:pressed { background-color: #242424; }
-            QPushButton:disabled {
+            QPushButton[appStyle="true"]:hover { background-color: #333333; }
+            QPushButton[appStyle="true"]:pressed { background-color: #242424; }
+            QPushButton[appStyle="true"]:disabled {
                 background-color: #d6d6d6;
                 color: #7a7a7a;
                 border-color: #F06D1D;
@@ -81,7 +81,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(single_layer_tab, "Single-Layer Modell")
 
         # Tab für das Multi-Layer-Model
-        multi_layer_tab = MultiLayerTab()
+        multi_layer_tab = MultiLayerSuiteTab()
         self.tab_widget.addTab(multi_layer_tab, "Multi-Layer Modell")
 
         # Curve Fitting ist jetzt im Single-Layer-Bereich enthalten

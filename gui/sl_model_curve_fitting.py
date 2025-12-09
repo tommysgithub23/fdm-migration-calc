@@ -135,26 +135,40 @@ def save_results_to_excel(measurement_point, optimal_D_P, excel_path):
     updated_df.to_excel(excel_path, index=False)
     print(f"Ergebnisse gespeichert unter: {excel_path}")
 
-def plot_migration_results(t_max, dt, optimal_simulation, measurement_seconds, measured_values, optimal_D_P, measurement_point, P_density, F_density, K_PF, c_P0, plot_dir):
-
-    os.makedirs(plot_dir, exist_ok=True)
-    file_name = f"migration_plot_{measurement_point['surrogate']}_{measurement_point['temperature_C']}C.pdf"
-    separators = [os.path.sep]
-    if os.path.altsep:
-        separators.append(os.path.altsep)
-    for sep in separators:
-        file_name = file_name.replace(sep, "_")
-    save_path = os.path.join(plot_dir, file_name)
+def plot_migration_results(
+    t_max,
+    dt,
+    optimal_simulation,
+    measurement_seconds,
+    measured_values,
+    optimal_D_P,
+    measurement_point,
+    P_density,
+    F_density,
+    K_PF,
+    c_P0,
+    plot_dir=None,
+):
+    save_path = None
+    if plot_dir:
+        os.makedirs(plot_dir, exist_ok=True)
+        file_name = f"migration_plot_{measurement_point['surrogate']}_{measurement_point['temperature_C']}C.pdf"
+        separators = [os.path.sep]
+        if os.path.altsep:
+            separators.append(os.path.altsep)
+        for sep in separators:
+            file_name = file_name.replace(sep, "_")
+        save_path = os.path.join(plot_dir, file_name)
 
     time = np.arange(0, t_max + dt, dt) 
-    plt.figure(figsize=(10, 7))
+    plt.figure(figsize=(8, 6))
     seconds_per_day = 3600 * 24
     time_days = time / seconds_per_day
     measurement_days = np.asarray(measurement_seconds) / seconds_per_day
     plt.plot(time_days, optimal_simulation, label='Simulation', linewidth=2, color='#F06D1D')
     
     # Overlay der Messwerte
-    plt.scatter(measurement_days, measured_values, label='Messwerte', color='blue', s=60, zorder=5)
+    plt.scatter(measurement_days, measured_values, label='Messwerte', color='blue', s=60, zorder=5, marker='^')
     
     # Berechnung der Residuen
     # Sicherstellen, dass die Indizes exakt auf den Messzeitpunkten liegen
@@ -164,22 +178,22 @@ def plot_migration_results(t_max, dt, optimal_simulation, measurement_seconds, m
     
     # Residuen als vertikale Linien anzeigen
     for x_day, y_meas, y_sim in zip(measurement_days, measured_values, simulated_at_measurement):
-        plt.vlines(x_day, y_sim, y_meas, color='red', linestyle='dashed', linewidth=1.5)
+        plt.vlines(x_day, y_sim, y_meas, color='red', linestyle='dashed', linewidth=1)
     
     # Achsenbeschriftungen und Titel
-    plt.plot([], [], color='red', linestyle='dashed', linewidth=1.5, label='Residuen')  # Dummy für Residuen
-    plt.text(0.32, 0.037, rf"$D_{{calc}}(T_{{C}}={measurement_point['temperature_C']}°C) = {optimal_D_P:.3e} \,\text{{cm²/s}}$",
-             transform=plt.gca().transAxes, fontsize=14, bbox=dict(facecolor='white', alpha=0.8))
-    plt.xlabel('Zeit [Tage]', fontsize=14)
-    plt.ylabel('Flächenspezifische Migrationsmenge [mg/dm²]', fontsize=14)
+    plt.plot([], [], color='red', linestyle='dashed', linewidth=1, label='Residuen')  # Dummy für Residuen
+    plt.text(0.32, 0.055, rf"$D_{{calc}}(T_{{C}}={measurement_point['temperature_C']}°C) = {optimal_D_P:.3e} \,\text{{cm²/s}}$",
+             transform=plt.gca().transAxes, fontsize=11, bbox=dict(facecolor='white', alpha=0.8))
+    plt.xlabel('Zeit [Tage]', fontsize=12)
+    plt.ylabel('spez. Migrationsmenge [mg/dm²]', fontsize=12)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.7, alpha=0.7)
     plt.ylim(0)
-    plt.legend(fontsize=12, loc='lower right')
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.title('Vergleich: Gemessene / simulierte Migration', fontsize=16)
+    plt.legend(fontsize=11, loc='lower right')
+    plt.xticks(fontsize=11)
+    plt.yticks(fontsize=11)
     
     boundary_conditions = (
-        rf"$\text{{Surrogate}}$: {measurement_point['surrogate']}, "
+        rf"$\text{{Substanz}}$: {measurement_point['surrogate']}, "
         rf"$T = {measurement_point['temperature_C']}\,^{{\circ}}\text{{C}},$ "
         rf"$c_{{P0}} = {c_P0}\,\text{{mg/kg}},$ "
         rf"$K_{{PF}} = {K_PF}$"
@@ -188,11 +202,25 @@ def plot_migration_results(t_max, dt, optimal_simulation, measurement_seconds, m
         rf"$\rho_F = {F_density}\,\text{{g/cm³}}$"
     )
     
-    plt.figtext(0.5, -0.06, boundary_conditions, ha='center', fontsize=12, bbox=dict(facecolor='white', alpha=0.8))
+    ax = plt.gca()
+    ax.text(
+        0.5,
+        -0.2,
+        boundary_conditions,
+        ha='center',
+        va='top',
+        transform=ax.transAxes,
+        fontsize=11,
+        bbox=dict(facecolor='white', alpha=0.8),
+        clip_on=False,
+    )
+    plt.subplots_adjust(bottom=0.02)
     # Plot speichern
-    plt.savefig(save_path, bbox_inches='tight')
-    
-    print(f"Plot gespeichert unter: {save_path}")
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+        print(f"Plot gespeichert unter: {save_path}")
+    else:
+        plt.tight_layout()
     return save_path
 def load_measurement_data(file_path):
     df = pd.read_excel(file_path, sheet_name="Sheet1")
