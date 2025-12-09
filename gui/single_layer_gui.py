@@ -99,16 +99,17 @@ class SingleLayerTab(QWidget):
 
         # Layout für die rechte Seite (geometrische Eingaben + Grafik)
         sl_input_tab_right_layout = QVBoxLayout()
-        sl_input_tab_right_layout.addLayout(sl_geo_layout)
-        sl_input_tab_right_layout.addLayout(sl_graphical_layout)
-
+        sl_input_tab_right_layout.addLayout(sl_geo_layout, 0)
+        sl_input_tab_right_layout.addLayout(sl_graphical_layout, 0)
+        sl_input_tab_right_layout.addStretch(1)
+    
         # Hauptlayout horizontal kombinieren (linke und rechte Seite)
         sl_input_tab_layout = QHBoxLayout()
         sl_input_tab_layout.setSpacing(20)
         sl_input_tab_layout.setContentsMargins(0, 0, 0, 0)
         sl_input_tab_layout.addLayout(sl_phy_chem_layout, 1)  # Physikalisch-chemische Eingaben
         sl_input_tab_layout.addLayout(sl_input_tab_right_layout, 2)  # Geometrie + Grafik
-
+        sl_input_tab_layout.setAlignment(Qt.AlignTop)
         # Fertiges Layout hinzufügen
         self.main_layout.addLayout(sl_input_tab_layout)
 
@@ -130,7 +131,7 @@ class SingleLayerTab(QWidget):
         # Inner layout controls spacing between inputs and headline
         inputs_layout = QVBoxLayout()
         inputs_layout.setContentsMargins(0, 0, 0, 0)
-        inputs_layout.setSpacing(6)
+        # inputs_layout.setSpacing(6)
         inputs_layout.setAlignment(Qt.AlignTop)
 
         # Add input fields
@@ -273,17 +274,14 @@ class SingleLayerTab(QWidget):
 
         # Create rows for combined inputs
         row_1_layout = QHBoxLayout()
-        row_1_layout.setSpacing(12)
         row_1_layout.addWidget(self._create_labeled_row("A<sub>PF</sub>", "dm²", self.A_PF_input))
         row_1_layout.addWidget(self._create_labeled_row("Simulation Case", "", self.sim_case_dropdown))
 
         row_2_layout = QHBoxLayout()
-        row_2_layout.setSpacing(12)
         row_2_layout.addWidget(self._create_labeled_row("d<sub>P</sub>", "cm", self.d_P_input))
         row_2_layout.addWidget(self._create_labeled_row("d<sub>F</sub>", "cm", self.d_F_input))
 
         row_3_layout = QHBoxLayout()
-        row_3_layout.setSpacing(12)
         row_3_layout.addWidget(self._create_labeled_row("V<sub>P</sub>", "cm³", self.V_P_input))
         row_3_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", self.V_F_input))
 
@@ -392,8 +390,8 @@ class SingleLayerTab(QWidget):
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setFixedHeight(220)
-        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setFixedHeight(160)
+        self.graphics_view.setMaximumWidth(250)
         self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         # Rechtecke in der Szene hinzufügen (mit Standardwerten)
@@ -407,23 +405,21 @@ class SingleLayerTab(QWidget):
 
         # Grafikbereich hinzufügen
         layout.addWidget(self.graphics_view)
-        
-        # Neues Layout für Error-Meldung und Start Button
-        error_button_layout = QHBoxLayout()
+
+        # Neues Layout für Error-Meldung und Start Button (immer unten rechts)
+        layout.addStretch(1)
         self.error_label.setFixedHeight(30)
-        error_button_layout.addWidget(self.error_label, 1)
-        
-        # Button hinzufügen
         self.start_button = QPushButton("Berechnung starten")
         self.start_button.setMinimumWidth(150)
         self.start_button.setFixedHeight(28)
-        self.start_button.clicked.connect(self.start_calculation)  # Signal verbinden
-        error_button_layout.addWidget(self.start_button, 0)
+        self.start_button.clicked.connect(self.start_calculation)
 
-        # (Entfernt: 3D-Plot Migration Button)
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.error_label, 1)
+        button_row.addStretch(1)
+        button_row.addWidget(self.start_button)
+        layout.addLayout(button_row)
 
-        layout.addLayout(error_button_layout)
-        
         return layout
 
     def plot_migration_surface(self):
@@ -686,7 +682,7 @@ class SingleLayerTab(QWidget):
 
     def _create_labeled_row(self, label_text, unit_text, input_field):
         row_layout = QHBoxLayout()
-        row_layout.setSpacing(4)
+        # row_layout.setSpacing(4)
         row_layout.setContentsMargins(0, 0, 0, 0)
 
         label = QLabel(f"<html>{label_text}</html>")
@@ -1171,8 +1167,8 @@ class ParameterVariationTab(SingleLayerTab):
         self.graphics_view = QGraphicsView()
         self.graphics_scene = QGraphicsScene()
         self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setFixedHeight(220)
-        self.graphics_view.setMaximumWidth(360)
+        self.graphics_view.setFixedHeight(160)
+        self.graphics_view.setMaximumWidth(250)
         self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.rect_f.setRect(0, 0, self.default_d_F * 40, 100)
@@ -1192,7 +1188,7 @@ class ParameterVariationTab(SingleLayerTab):
         graph_section.addWidget(self.graphics_view)
 
         content_layout = QHBoxLayout()
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(40)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.addLayout(graph_section, 1)
 
@@ -1207,7 +1203,7 @@ class ParameterVariationTab(SingleLayerTab):
         self.parameter_dropdown = QComboBox()
         self.parameter_dropdown.addItems(self.parameter_options)
         self._apply_input_width(self.parameter_dropdown)
-        controls_layout.addWidget(self._create_parameter_form_row("Parameter", self.parameter_dropdown))
+        controls_layout.addWidget(self._create_parameter_form_row("x", self.parameter_dropdown))
 
         self.param_min_input = QLineEdit()
         self.param_max_input = QLineEdit()
@@ -1217,9 +1213,10 @@ class ParameterVariationTab(SingleLayerTab):
             field.setAlignment(Qt.AlignRight)
             field.setFixedWidth(self.input_width)
 
-        min_widget, self.param_min_unit_label = self._create_range_row("Minimum", self.param_min_input)
-        max_widget, self.param_max_unit_label = self._create_range_row("Maximum", self.param_max_input)
-        steps_widget, _ = self._create_range_row("Anzahl Schritte", self.param_steps_input, with_unit=False)
+        min_widget, self.param_min_unit_label = self._create_range_row("x<sub>min</sub>", self.param_min_input)
+        max_widget, self.param_max_unit_label = self._create_range_row("x<sub>max</sub>", self.param_max_input)
+        steps_widget, _ = self._create_range_row("n", self.param_steps_input, with_unit=False)
+
 
         controls_layout.addWidget(min_widget)
         controls_layout.addWidget(max_widget)
@@ -1231,17 +1228,18 @@ class ParameterVariationTab(SingleLayerTab):
 
         self.parameter_dropdown.currentTextChanged.connect(self._update_parameter_range_defaults)
 
-        error_button_layout = QHBoxLayout()
+        layout.addStretch(1)
         self.error_label.setFixedHeight(30)
-        error_button_layout.addWidget(self.error_label, 1)
-
         self.start_button = QPushButton("Berechnung starten")
         self.start_button.setMinimumWidth(150)
         self.start_button.setFixedHeight(28)
         self.start_button.clicked.connect(self.start_parameter_variation)
-        error_button_layout.addWidget(self.start_button, 0)
 
-        layout.addLayout(error_button_layout)
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.error_label, 1)
+        button_row.addStretch(1)
+        button_row.addWidget(self.start_button)
+        layout.addLayout(button_row)
 
         self._update_parameter_range_defaults()
 

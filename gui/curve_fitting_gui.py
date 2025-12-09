@@ -1,4 +1,4 @@
-import os
+
 from typing import List, Tuple
 
 import numpy as np
@@ -40,9 +40,9 @@ class CurveFittingTab(QWidget):
         self.saved_plot_path: str | None = None
         self._validation_message: str = ""
 
-        self.label_width = 90
-        self.input_width = 120
-        self.unit_width = 40
+        self.label_width = 60
+        self.input_width = 90
+        self.unit_width = 20
 
         self._build_ui()
         self._add_default_rows()
@@ -58,8 +58,8 @@ class CurveFittingTab(QWidget):
 
     def _build_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setSpacing(12)
-        self.main_layout.setContentsMargins(12, 12, 12, 12)
+        self.main_layout.setSpacing(0)
+        # self.main_layout.setContentsMargins(9, 9, 9, 9)
 
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("color: red; font-weight: bold;")
@@ -67,8 +67,10 @@ class CurveFittingTab(QWidget):
         self.main_layout.addWidget(self.error_label)
 
         top_layout = QHBoxLayout()
-        top_layout.setSpacing(16)
+        top_layout.setAlignment(Qt.AlignTop)
+        top_layout.setSpacing(100)
         self.main_layout.addLayout(top_layout)
+        self.main_layout.setAlignment(Qt.AlignTop)
 
         self.surrogate_input = QLineEdit()
         self.temperature_input = QLineEdit("20")
@@ -80,9 +82,6 @@ class CurveFittingTab(QWidget):
         self.v_f_input = QLineEdit("28.27")
         self.a_pf_input = QLineEdit("0.2827")
         self.dt_input = QLineEdit("3600")
-        default_plot_dir = os.path.join(os.getcwd(), "data", "plots")
-        self.plot_dir_input = QLineEdit(default_plot_dir)
-        self.plot_dir_input.setMinimumWidth(220)
 
         self._configure_line_edit(self.surrogate_input, align_left=True)
         for fld in (
@@ -111,7 +110,7 @@ class CurveFittingTab(QWidget):
         self.input_layout.setContentsMargins(0, 0, 0, 0)
         left_column.addLayout(self.input_layout)
 
-        self.input_layout.addWidget(self._create_labeled_row("Surrogat", "", self.surrogate_input))
+        self.input_layout.addWidget(self._create_labeled_row("Substanz", "", self.surrogate_input))
         self.input_layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.temperature_input))
         self.input_layout.addWidget(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_p0_input))
         self.input_layout.addWidget(self._create_labeled_row("ρ<sub>P</sub>", "g/cm³", self.p_density_input))
@@ -121,16 +120,6 @@ class CurveFittingTab(QWidget):
         self.input_layout.addWidget(self._create_labeled_row("V<sub>F</sub>", "cm³", self.v_f_input))
         self.input_layout.addWidget(self._create_labeled_row("A<sub>PF</sub>", "dm²", self.a_pf_input))
         self.input_layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
-
-        plot_dir_widget = QWidget()
-        plot_dir_layout = QHBoxLayout(plot_dir_widget)
-        plot_dir_layout.setSpacing(6)
-        plot_dir_layout.setContentsMargins(0, 0, 0, 0)
-        plot_dir_layout.addWidget(self.plot_dir_input, 1)
-        browse_button = QPushButton("Ordner wählen")
-        browse_button.clicked.connect(self._browse_plot_dir)
-        plot_dir_layout.addWidget(browse_button)
-        self.input_layout.addWidget(self._create_labeled_row("Plot Pfad", "", plot_dir_widget))
 
         left_column.addStretch()
         top_layout.addLayout(left_column, 0)
@@ -144,10 +133,6 @@ class CurveFittingTab(QWidget):
         table_header_layout.setSpacing(6)
         table_header_layout.addWidget(table_label)
         table_header_layout.addStretch()
-        import_button = QPushButton("Excel importieren")
-        import_button.setFixedHeight(26)
-        import_button.clicked.connect(self._import_measurements_from_excel)
-        table_header_layout.addWidget(import_button)
         table_layout.addLayout(table_header_layout)
 
         self.measurement_table = QTableWidget(0, 2)
@@ -160,11 +145,21 @@ class CurveFittingTab(QWidget):
         self.measurement_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.measurement_table.customContextMenuRequested.connect(self._show_measurement_context_menu)
 
+        import_button = QPushButton("Excel importieren")
+        import_button.clicked.connect(self._import_measurements_from_excel)
+        import_row = QHBoxLayout()
+        import_row.setSpacing(6)
+        import_row.setContentsMargins(0, 0, 0, 0)
+        import_row.addWidget(import_button)
+        import_row.addStretch()
+        table_layout.addLayout(import_row)
+
         top_layout.addLayout(table_layout, 1)
 
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(12)
         self.calculate_button = QPushButton("Diffusionskoeffizient berechnen")
+        self.calculate_button.setProperty("appStyle", True)
         self.calculate_button.clicked.connect(self.calculate_coefficient)
         controls_layout.addStretch()
         controls_layout.addWidget(self.calculate_button)
@@ -251,12 +246,6 @@ class CurveFittingTab(QWidget):
         except Exception as exc:
             self._set_error(f"Import fehlgeschlagen: {exc}")
 
-    def _browse_plot_dir(self) -> None:
-        current_dir = self.plot_dir_input.text() or os.getcwd()
-        selected_dir = QFileDialog.getExistingDirectory(self, "Plot-Ordner auswählen", current_dir)
-        if selected_dir:
-            self.plot_dir_input.setText(selected_dir)
-
     def calculate_coefficient(self) -> None:
         self._set_error("", show_dialog=False)
         self.result_label.setText("")
@@ -277,9 +266,6 @@ class CurveFittingTab(QWidget):
             v_f = self._parse_float(self.v_f_input, "V_F")
             a_pf = self._parse_float(self.a_pf_input, "A_PF")
             dt = self._parse_float(self.dt_input, "Δt")
-            plot_dir = self.plot_dir_input.text().strip()
-            if not plot_dir:
-                raise ValueError("Bitte einen Plot-Ordner angeben.")
 
             measurement_days, c_f_values = self._collect_measurements()
         except ValueError as exc:
@@ -343,7 +329,6 @@ class CurveFittingTab(QWidget):
                 f_density,
                 k_pf,
                 c_p0,
-                plot_dir,
             )
             figure = self._current_figure()
             self._display_figure(figure)
@@ -352,9 +337,14 @@ class CurveFittingTab(QWidget):
             return
 
         self.saved_plot_path = save_path
-        self.result_label.setText(
-            f"Berechneter Diffusionskoeffizient: {optimal_D_P:.3e} cm²/s\nPlot gespeichert unter: {save_path}"
-        )
+        if save_path:
+            self.result_label.setText(
+                f"Berechneter Diffusionskoeffizient: {optimal_D_P:.3e} cm²/s\n"
+            )
+        else:
+            self.result_label.setText(
+                f"Berechneter Diffusionskoeffizient: {optimal_D_P:.3e} cm²/s\n"
+            )
 
     def _collect_measurements(self) -> Tuple[List[float], List[float]]:
         times: List[float] = []
@@ -395,7 +385,7 @@ class CurveFittingTab(QWidget):
         if figure is None:
             return
         from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton, QFileDialog, QHBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Migration Plot")
@@ -406,12 +396,40 @@ class CurveFittingTab(QWidget):
         canvas.draw()
         layout.addWidget(canvas)
 
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        save_button = QPushButton("Plot speichern")
+        save_button.setProperty("appStyle", True)
+        save_button.setMinimumWidth(140)
+        save_button.clicked.connect(lambda: self._save_current_figure(figure))
+        button_row.addWidget(save_button)
+
         close_button = QPushButton("Schließen")
+        close_button.setProperty("appStyle", True)
         close_button.clicked.connect(dialog.accept)
-        layout.addWidget(close_button, alignment=Qt.AlignRight)
+        button_row.addWidget(close_button)
+
+        layout.addLayout(button_row)
 
         dialog.resize(1200, 600)
         dialog.show()
+
+    def _save_current_figure(self, figure) -> None:
+        if figure is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Plot speichern",
+            "",
+            "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        try:
+            figure.savefig(path)
+            self.saved_plot_path = path
+        except Exception as exc:  # pylint: disable=broad-except
+            self._set_error(f"Plot konnte nicht gespeichert werden: {exc}", show_dialog=True)
 
     def _current_figure(self):
         import matplotlib.pyplot as plt
@@ -423,7 +441,6 @@ class CurveFittingTab(QWidget):
     def _register_validation_hooks(self) -> None:
         self.required_text_fields = {
             "Surrogat": self.surrogate_input,
-            "Plot Pfad": self.plot_dir_input,
         }
         self.numeric_fields = {
             "Temperatur": self.temperature_input,
@@ -619,7 +636,7 @@ class CurveFittingTab(QWidget):
 
     def _configure_line_edit(self, widget: QLineEdit, align_left: bool = False) -> None:
         widget.setFixedWidth(self.input_width)
-        widget.setFixedHeight(25)
+        widget.setFixedHeight(22)
         alignment = Qt.AlignLeft if align_left else Qt.AlignRight
         widget.setAlignment(alignment | Qt.AlignVCenter)
 
