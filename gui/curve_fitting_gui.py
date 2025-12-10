@@ -138,6 +138,8 @@ class CurveFittingTab(QWidget):
 
         self.measurement_table = QTableWidget(0, 2)
         self.measurement_table.setHorizontalHeaderLabels(["Zeit [Tage]", "Messwert [mg/kg]"])
+        self.measurement_table.setFixedHeight(260)
+        self.measurement_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         header = self.measurement_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -146,25 +148,20 @@ class CurveFittingTab(QWidget):
         self.measurement_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.measurement_table.customContextMenuRequested.connect(self._show_measurement_context_menu)
 
-        import_button = QPushButton("Excel importieren")
+        import_button = QPushButton("Messwerte importieren")
         import_button.clicked.connect(self._import_measurements_from_excel)
+        calculate_button = QPushButton("Berechnung starten")
+        calculate_button.setProperty("appStyle", True)
+        calculate_button.clicked.connect(self.calculate_coefficient)
         import_row = QHBoxLayout()
         import_row.setSpacing(6)
-        import_row.setContentsMargins(0, 0, 0, 0)
+        import_row.setContentsMargins(0, 6, 0, 0)
         import_row.addWidget(import_button)
-        import_row.addStretch()
+        import_row.addStretch(1)
+        import_row.addWidget(calculate_button, 0, Qt.AlignRight)
         table_layout.addLayout(import_row)
-
+        table_layout.addStretch()
         top_layout.addLayout(table_layout, 1)
-
-        controls_layout = QHBoxLayout()
-        controls_layout.setSpacing(12)
-        self.calculate_button = QPushButton("Diffusionskoeffizient berechnen")
-        self.calculate_button.setProperty("appStyle", True)
-        self.calculate_button.clicked.connect(self.calculate_coefficient)
-        controls_layout.addStretch()
-        controls_layout.addWidget(self.calculate_button)
-        self.main_layout.addLayout(controls_layout)
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignLeft)
@@ -678,13 +675,13 @@ class CurveFittingTab(QWidget):
 
     def _configure_line_edit(self, widget: QLineEdit, align_left: bool = False) -> None:
         widget.setFixedWidth(self.input_width)
-        widget.setFixedHeight(22)
+        widget.setFixedHeight(24)
         alignment = Qt.AlignLeft if align_left else Qt.AlignRight
         widget.setAlignment(alignment | Qt.AlignVCenter)
 
     def _create_labeled_row(self, label_text: str, unit_text: str, field_widget) -> QWidget:
         row_layout = QHBoxLayout()
-        row_layout.setSpacing(6)
+        # row_layout.setSpacing(6)
         row_layout.setContentsMargins(0, 0, 0, 0)
 
         label = QLabel(f"<html>{label_text}</html>")
