@@ -5,13 +5,14 @@
 from ml_model_functions import *
 # Simulationsparameter
 T_C = 40  # Temperatur [°C]
-M_r = 531  # relative Molekülmasse [g/mol]
+M_r = 136  # relative Molekülmasse [g/mol]
 d_nx_ratio = 0.002  # Verhältnis von Schichtdicke zu Anzahl der Gitterpunkte [cm]
 t_max = 3600 * 24 * 10  # Gesamte Simulationszeit [s]
 dt = 1000  # Zeitschrittgröße [s]
 
 # Definition der Schichten
 layers = [
+    Layer(material='HDPE', d=0.2, nx=int(0.2 / d_nx_ratio), C_init=0.0, K_value=1.0, density=1),
     Layer(material='LDPE', d=0.2, nx=int(0.2 / d_nx_ratio), C_init=220.0, K_value=1.0, density=1),
     Layer(material='Kontaktphase', d=1.85, nx=int(1.85 / d_nx_ratio), C_init=0.0, K_value=None, density=0.9)
 ]

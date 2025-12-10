@@ -5,14 +5,15 @@ from datetime import datetime
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QColor, QPalette, QTextDocument
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog,
                                QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSizePolicy, QSpacerItem,
                                QStyledItemDelegate, QMessageBox, QStyle, QStyleOptionViewItem,
-                               QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem)
+                               QTabWidget, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem,
+                               QDialog, QHeaderView)
 from sl_model_package.EFSA_extended import (
     generate_curves,
     compute_cmod_efsa,
@@ -132,7 +133,7 @@ class SingleLayerTab(QWidget):
         # Inner layout controls spacing between inputs and headline
         inputs_layout = QVBoxLayout()
         inputs_layout.setContentsMargins(0, 0, 0, 0)
-        # inputs_layout.setSpacing(6)
+        inputs_layout.setSpacing(6)
         inputs_layout.setAlignment(Qt.AlignTop)
 
         # Add input fields
@@ -165,7 +166,7 @@ class SingleLayerTab(QWidget):
         for input_field in [self.T_C_input, self.t_max_input, self.M_r_input, self.c_P0_input,
                             self.P_density_input, self.F_density_input, self.D_P_known_input, self.K_PF_input, self.dt_input]:
             input_field.setFixedWidth(self.input_width)
-            input_field.setFixedHeight(22)
+            input_field.setFixedHeight(24)
             input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
 
         self.tooltip_helper.register(self.T_C_input, "Temperatur in °C.")
@@ -270,7 +271,7 @@ class SingleLayerTab(QWidget):
         # Narrow input fields
         for input_field in [self.d_P_input, self.d_F_input, self.V_P_input, self.V_F_input, self.A_PF_input]:
             self._apply_input_width(input_field)
-            input_field.setFixedHeight(22)
+            input_field.setFixedHeight(24)
             input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
 
         # Create rows for combined inputs
@@ -694,7 +695,7 @@ class SingleLayerTab(QWidget):
 
         if isinstance(input_field, QLineEdit):
             self._apply_input_width(input_field)
-            input_field.setFixedHeight(22)
+            input_field.setFixedHeight(24)
             input_field.setAlignment(Qt.AlignRight)
         elif isinstance(input_field, QComboBox):
             input_field.setFixedHeight(24)
@@ -833,7 +834,7 @@ class ResultsPopup(QWidget):
 
     def export_plot(self):
         """Exportiert den Plot als PDF-Datei."""
-        file_path, _ = QFileDialog.getSaveFileName(self, "Plot als PDF exportieren", "", "PDF-Dateien (*.pdf)")
+        file_path, _ = QFileDialog.getSaveFileName(self, "Plot speichern", "", "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;Alle Dateien (*)")
         if file_path:
             self.figure.savefig(file_path, format="pdf")
 
@@ -922,10 +923,16 @@ class EFSAExtendedTab(QWidget):
         super().__init__()
         self.measurement_points = []  # Liste von Dicts mit keys: Mr, C_mod, eta_min (optional)
         self._fields = []
+        self.cmod_dialog = None
+        self.eta_dialog = None
+
+        self.label_width = 60
+        self.input_width = 90
+        self.unit_width = 20
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setSpacing(12)
-        self.main_layout.setContentsMargins(12, 12, 12, 12)
+        self.main_layout.setSpacing(0)
+        # self.main_layout.setContentsMargins(12, 12, 12, 12)
 
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("color: red; font-weight: bold;")
@@ -933,7 +940,7 @@ class EFSAExtendedTab(QWidget):
         self.main_layout.addWidget(self.error_label)
 
         top_layout = QHBoxLayout()
-        top_layout.setSpacing(16)
+        top_layout.setSpacing(100)
         self.main_layout.addLayout(top_layout)
 
         # Eingabefelder
@@ -951,68 +958,79 @@ class EFSAExtendedTab(QWidget):
             fld.setAlignment(Qt.AlignRight)
             fld.setFixedHeight(24)
             self._fields.append(fld)
+            fld.textChanged.connect(lambda _, f=fld: self._validate_numeric_input(f))
 
         left_col = QVBoxLayout()
         left_col.setSpacing(6)
         left_col.setContentsMargins(0, 0, 0, 0)
+        heading = QLabel("<b>Eingabeparameter</b>")
+        heading.setAlignment(Qt.AlignLeft)  
+        left_col.addWidget(heading)
         left_col.addWidget(self._create_labeled_row("Material", "", self.material_combo))
         left_col.addWidget(self._create_labeled_row("Szenario", "", self.scenario_combo))
         left_col.addWidget(self._create_labeled_row("M<sub>r,min</sub>", "g/mol", self.mr_min_input))
         left_col.addWidget(self._create_labeled_row("M<sub>r,max</sub>", "g/mol", self.mr_max_input))
-        left_col.addWidget(self._create_labeled_row("Anzahl Punkte", "", self.points_input))
+        left_col.addWidget(self._create_labeled_row("n", "", self.points_input))
         left_col.addWidget(self._create_labeled_row("c<sub>ref</sub>", "mg/kg", self.c_ref_input))
+
+        left_col.addStretch()
+        # rechter Bereich: Tabelle + Buttons darunter
+        table_label = QLabel("<b>Messwerte</b>")
+        table_label.setAlignment(Qt.AlignLeft)
+        self.measurement_table = QTableWidget(3, 3)
+        self.measurement_table.setHorizontalHeaderLabels(["Mr [g/mol]", "C (exp.) [mg/kg]", "eta (exp.) [%]"])
+        header = self.measurement_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.measurement_table.setFixedHeight(260)
+        self.measurement_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.cmod_figure = Figure(figsize=(6, 4))
+        self.eta_figure = Figure(figsize=(6, 4))
 
         button_row = QHBoxLayout()
         button_row.setSpacing(6)
+        button_row.setContentsMargins(0, 6, 0, 0)
         import_btn = QPushButton("Messwerte importieren")
-        import_btn.setFixedHeight(26)
-        import_btn.setProperty("appStyle", True)
+        import_btn.setProperty("appStyle", False)
         import_btn.clicked.connect(self._import_measurements)
-        calc_btn = QPushButton("Berechnen")
+        calc_btn = QPushButton("Berechnung starten")
         calc_btn.setFixedHeight(26)
         calc_btn.setProperty("appStyle", True)
-        calc_btn.clicked.connect(self.update_plots)
-        export_btn = QPushButton("Plots exportieren")
-        export_btn.setFixedHeight(26)
-        export_btn.setProperty("appStyle", True)
-        export_btn.clicked.connect(self._export_plots)
+        calc_btn.clicked.connect(lambda: self.update_plots(show_dialogs=True))
         button_row.addWidget(import_btn)
-        button_row.addWidget(calc_btn)
-        button_row.addWidget(export_btn)
-        button_row.addStretch()
-        left_col.addLayout(button_row)
-        left_col.addStretch()
+        button_row.addStretch(1)  # spannt die Zeile, damit der Start-Button rechts sitzt
+        button_row.addWidget(calc_btn, 0, Qt.AlignRight)
+
+        right_col = QVBoxLayout()
+        right_col.setSpacing(6)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.addWidget(table_label)
+        right_col.addWidget(self.measurement_table)
+        right_col.addLayout(button_row)
+        right_col.addStretch()
 
         top_layout.addLayout(left_col, 0)
+        top_layout.addLayout(right_col, 1)
 
-        # Plot-Bereich
-        plots_layout = QVBoxLayout()
-        plots_layout.setSpacing(12)
-        plots_layout.setContentsMargins(0, 0, 0, 0)
+        self.result_label = QLabel("")
+        self.result_label.setAlignment(Qt.AlignLeft)
+        self.result_label.setWordWrap(True)
+        self.main_layout.addWidget(self.result_label)
 
-        self.cmod_figure = Figure(figsize=(6, 4))
-        self.cmod_canvas = FigureCanvas(self.cmod_figure)
-        plots_layout.addWidget(self.cmod_canvas)
-
-        self.eta_figure = Figure(figsize=(6, 4))
-        self.eta_canvas = FigureCanvas(self.eta_figure)
-        plots_layout.addWidget(self.eta_canvas)
-
-        top_layout.addLayout(plots_layout, 1)
-
-        self.update_plots()
+        # Plots werden erst nach einem Klick auf "Berechnen" gezeigt
 
     def _create_labeled_row(self, label_text: str, unit_text: str, widget: QWidget) -> QWidget:
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(10)
         row.setContentsMargins(0, 0, 0, 0)
 
         label = QLabel(f"<html>{label_text}</html>")
-        label.setMinimumWidth(80)
+        label.setMinimumWidth(self.label_width)
         label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         unit = QLabel(unit_text)
         unit.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        unit.setMinimumWidth(40)
+        unit.setMinimumWidth(self.unit_width)
 
         row.addWidget(label)
         row.addWidget(widget)
@@ -1022,6 +1040,142 @@ class EFSAExtendedTab(QWidget):
         container = QWidget()
         container.setLayout(row)
         return container
+
+    def _collect_measurements(self, scenario: str, c_ref: float):
+        points = []
+        rows = self.measurement_table.rowCount()
+        for r in range(rows):
+            mr_item = self.measurement_table.item(r, 0)
+            cmod_item = self.measurement_table.item(r, 1)
+            eta_item = self.measurement_table.item(r, 2)
+
+            mr_txt = mr_item.text().strip() if mr_item and mr_item.text() else ""
+            cmod_txt = cmod_item.text().strip() if cmod_item and cmod_item.text() else ""
+            eta_txt = eta_item.text().strip() if eta_item and eta_item.text() else ""
+
+            if not mr_txt and not cmod_txt and not eta_txt:
+                continue
+
+            # Ohne Mr nicht darstellen -> überspringen
+            if not mr_txt:
+                continue
+
+            # Dezimal-Komma oder ungültige Zahl -> Zeile ignorieren
+            if "," in mr_txt or (cmod_txt and "," in cmod_txt) or (eta_txt and "," in eta_txt):
+                continue
+
+            try:
+                mr_val = float(mr_txt)
+                cmod_val = float(cmod_txt) if cmod_txt else None
+                eta_val = float(eta_txt) if eta_txt else None
+            except ValueError:
+                continue
+
+            # Fehlende Werte aus EFSA-Formeln ergänzen (zur Anzeige)
+            if cmod_val is None:
+                try:
+                    cmod_val = compute_cmod_efsa(mr_val, scenario, c_ref)
+                except Exception:
+                    cmod_val = None
+            if eta_val is None:
+                try:
+                    eta_val = compute_eta_min_efsa(mr_val, scenario, c_ref)
+                except Exception:
+                    eta_val = None
+
+            points.append({"Mr": mr_val, "C_mod": cmod_val, "eta_min": eta_val})
+
+        return points
+
+    def _validate_measurement_table(self):
+        is_valid = True
+        message = None
+        for r in range(self.measurement_table.rowCount()):
+            mr_item = self.measurement_table.item(r, 0)
+            cmod_item = self.measurement_table.item(r, 1)
+            eta_item = self.measurement_table.item(r, 2)
+
+            mr_txt = mr_item.text().strip() if mr_item and mr_item.text() else ""
+            cmod_txt = cmod_item.text().strip() if cmod_item and cmod_item.text() else ""
+            eta_txt = eta_item.text().strip() if eta_item and eta_item.text() else ""
+
+            # Leere Zeile
+            if not mr_txt and not cmod_txt and not eta_txt:
+                self._mark_measurement_cell_valid(r, 0)
+                self._mark_measurement_cell_valid(r, 1)
+                self._mark_measurement_cell_valid(r, 2)
+                continue
+
+            row_valid = True
+
+            # Mr prüfen
+            if not mr_txt or "," in mr_txt:
+                self._mark_measurement_cell_invalid(r, 0)
+                row_valid = False
+                if message is None:
+                    message = f"Zeile {r + 1}: Mr fehlt oder ist ungültig."
+            else:
+                try:
+                    float(mr_txt)
+                    self._mark_measurement_cell_valid(r, 0)
+                except ValueError:
+                    self._mark_measurement_cell_invalid(r, 0)
+                    row_valid = False
+                    if message is None:
+                        message = f"Zeile {r + 1}: Mr muss eine Zahl sein."
+
+            # cmod prüfen (optional)
+            if cmod_txt:
+                if "," in cmod_txt:
+                    self._mark_measurement_cell_invalid(r, 1)
+                    row_valid = False
+                    if message is None:
+                        message = "Bitte '.' als Dezimaltrennzeichen verwenden."
+                else:
+                    try:
+                        float(cmod_txt)
+                        self._mark_measurement_cell_valid(r, 1)
+                    except ValueError:
+                        self._mark_measurement_cell_invalid(r, 1)
+                        row_valid = False
+                        if message is None:
+                            message = f"Zeile {r + 1}: C_mod muss eine Zahl sein."
+            else:
+                self._mark_measurement_cell_valid(r, 1)
+
+            # eta prüfen (optional)
+            if eta_txt:
+                if "," in eta_txt:
+                    self._mark_measurement_cell_invalid(r, 2)
+                    row_valid = False
+                    if message is None:
+                        message = "Bitte '.' als Dezimaltrennzeichen verwenden."
+                else:
+                    try:
+                        float(eta_txt)
+                        self._mark_measurement_cell_valid(r, 2)
+                    except ValueError:
+                        self._mark_measurement_cell_invalid(r, 2)
+                        row_valid = False
+                        if message is None:
+                            message = f"Zeile {r + 1}: eta_min muss eine Zahl sein."
+            else:
+                self._mark_measurement_cell_valid(r, 2)
+
+            # Mindestens ein Messwert?
+            if mr_txt and not (cmod_txt or eta_txt):
+                self._mark_measurement_cell_invalid(r, 1)
+                self._mark_measurement_cell_invalid(r, 2)
+                row_valid = False
+                if message is None:
+                    message = f"Zeile {r + 1}: Bitte C_mod oder eta_min angeben."
+
+            if not row_valid:
+                is_valid = False
+
+        if is_valid:
+            self.error_label.setText("")
+        return is_valid, message
 
     def _parse_float(self, field: QLineEdit, name: str) -> float:
         text = field.text().strip()
@@ -1060,15 +1214,24 @@ class EFSAExtendedTab(QWidget):
             if df.shape[1] < 2:
                 raise ValueError("Mindestens zwei Spalten erforderlich: Mr, C_mod (optional eta_min).")
 
-            df = df.dropna()
-            self.measurement_points = []
+            df = df.dropna(how="all")
+            self.measurement_table.setRowCount(0)
             for _, row in df.iterrows():
-                mr = float(row.iloc[0])
-                cmod = float(row.iloc[1])
-                eta_val = float(row.iloc[2]) if df.shape[1] > 2 else None
-                self.measurement_points.append({"Mr": mr, "C_mod": cmod, "eta_min": eta_val})
+                r = self.measurement_table.rowCount()
+                self.measurement_table.insertRow(r)
+                vals = [
+                    "" if pd.isna(row.iloc[0]) else str(row.iloc[0]),
+                    "" if pd.isna(row.iloc[1]) else str(row.iloc[1]),
+                    "" if (df.shape[1] > 2 and pd.isna(row.iloc[2])) else (str(row.iloc[2]) if df.shape[1] > 2 else ""),
+                ]
+                for col, val in enumerate(vals):
+                    item = QTableWidgetItem(val)
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    self.measurement_table.setItem(r, col, item)
 
-            self.update_plots()
+            self._validate_measurement_table()
+            self.measurement_points = self._collect_measurements(scenario, c_ref)
+            self.update_plots(show_dialogs=False)
         except Exception as exc:
             self._set_error(f"Import fehlgeschlagen: {exc}")
 
@@ -1084,8 +1247,58 @@ class EFSAExtendedTab(QWidget):
     def _mark_field_valid(self, field: QLineEdit):
         field.setStyleSheet("")
 
-    def update_plots(self):
+    def _validate_numeric_input(self, field: QLineEdit):
+        if self._is_valid_number(field.text()):
+            self._mark_field_valid(field)
+            self.error_label.setText("")
+        else:
+            self._mark_field_invalid(field)
+            # error_label wird in _validate_inputs gesetzt
+
+    def _is_valid_number(self, value: str) -> bool:
+        txt = value.strip()
+        if not txt:
+            return False
+        if "," in txt:
+            return False
         try:
+            float(txt)
+            return True
+        except ValueError:
+            return False
+
+    def _validate_inputs(self) -> bool:
+        is_valid = True
+        for fld in (self.mr_min_input, self.mr_max_input, self.points_input, self.c_ref_input):
+            if self._is_valid_number(fld.text()):
+                self._mark_field_valid(fld)
+            else:
+                self._mark_field_invalid(fld)
+                is_valid = False
+        if not is_valid:
+            self._set_error("Bitte korrigiere die rot markierten Felder.")
+        else:
+            self._set_error("")
+        return is_valid
+
+    def _mark_measurement_cell_invalid(self, row: int, col: int):
+        item = self.measurement_table.item(row, col)
+        if item is None:
+            item = QTableWidgetItem()
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.measurement_table.setItem(row, col, item)
+        item.setBackground(QColor("#FFCCCC"))
+
+    def _mark_measurement_cell_valid(self, row: int, col: int):
+        item = self.measurement_table.item(row, col)
+        if item:
+            base_color = self.measurement_table.palette().color(QPalette.Base)
+            item.setBackground(base_color)
+
+    def update_plots(self, show_dialogs: bool = False):
+        try:
+            if not self._validate_inputs():
+                return
             mr_min = self._parse_float(self.mr_min_input, "M_r,min")
             mr_max = self._parse_float(self.mr_max_input, "M_r,max")
             if mr_max <= mr_min:
@@ -1093,6 +1306,11 @@ class EFSAExtendedTab(QWidget):
             points = int(self._parse_float(self.points_input, "Anzahl Punkte"))
             c_ref = self._parse_float(self.c_ref_input, "c_ref")
             scenario = self.scenario_combo.currentText()
+            valid_table, table_msg = self._validate_measurement_table()
+            if not valid_table:
+                self._set_error(table_msg or "Bitte korrigiere die rot markierten Messwerte.")
+                return
+            self.measurement_points = self._collect_measurements(scenario, c_ref)
         except ValueError as exc:
             self._set_error(str(exc))
             return
@@ -1102,13 +1320,18 @@ class EFSAExtendedTab(QWidget):
         M_r_values, C_mod_values, _ = generate_curves(mr_min, mr_max, points, scenario, material, c_ref)
         eta_min_values = [compute_eta_min_efsa(mr, scenario, c_ref) for mr in M_r_values]
 
+        # Figuren je Lauf frisch anlegen, damit Zoom/Pan-Zustände nicht übernommen werden
+        self.cmod_figure = Figure(figsize=(6, 4))
+        self.eta_figure = Figure(figsize=(6, 4))
+
         # Plot 1: C_mod
         self.cmod_figure.clear()
         ax1 = self.cmod_figure.add_subplot(111)
-        ax1.plot(M_r_values, C_mod_values, color="#F06D1D", linewidth=2, label="C_mod")
-        if self.measurement_points:
-            xs = [p["Mr"] for p in self.measurement_points]
-            ys = [p["C_mod"] for p in self.measurement_points]
+        ax1.plot(M_r_values, C_mod_values, color="#F06D1D", linewidth=2, label="C_mod (berechnet)")
+        cmod_points = [p for p in self.measurement_points if p.get("C_mod") is not None]
+        if cmod_points:
+            xs = [p["Mr"] for p in cmod_points]
+            ys = [p["C_mod"] for p in cmod_points]
             ax1.scatter(xs, ys, color="blue", s=30, label="Messwerte")
         ax1.set_xlabel("$M_{w}$ [g/mol]")
         ax1.set_ylabel("$C_{mod}$ [mg/kg]")
@@ -1119,12 +1342,11 @@ class EFSAExtendedTab(QWidget):
         ax1.grid(True, linestyle="--", alpha=0.5)
         if self.measurement_points:
             ax1.legend()
-        self.cmod_canvas.draw()
 
         # Plot 2: eta_min
         self.eta_figure.clear()
         ax2 = self.eta_figure.add_subplot(111)
-        ax2.plot(M_r_values, eta_min_values, color="#F06D1D", linewidth=2, label="eta_min")
+        ax2.plot(M_r_values, eta_min_values, color="#F06D1D", linewidth=2, label="eta_min (berechnet)")
         eta_points = [p for p in self.measurement_points if p.get("eta_min") is not None]
         if eta_points:
             xs = [p["Mr"] for p in eta_points]
@@ -1140,22 +1362,104 @@ class EFSAExtendedTab(QWidget):
         ax2.grid(True, linestyle="--", alpha=0.5)
         if eta_points:
             ax2.legend()
-        self.eta_canvas.draw()
+        summary = (
+            "<b>Zusammenfassung</b><br>"
+            f"Material: {material}, Szenario {scenario}<br>"
+            f"M_r: {mr_min} - {mr_max} g/mol, Punkte: {points}<br>"
+            f"c_ref: {c_ref} mg/kg; Messwerte: {len(self.measurement_points)}"
+        )
+        self.result_label.setText(summary)
+
+        if show_dialogs:
+            # Offene Plot-Dialoge schließen, bevor neue gezeigt werden
+            for dlg in (self.cmod_dialog, self.eta_dialog):
+                if dlg is not None:
+                    try:
+                        dlg.close()
+                    except RuntimeError:
+                        pass
+            self.cmod_dialog = None
+            self.eta_dialog = None
+
+            # Plot-Dialoge versetzt anzeigen
+            self.cmod_dialog = self._show_plot_dialog(
+                rf"EFSA Szenario {scenario} ({material}) - C_mod",
+                self.cmod_figure,
+                summary,
+                offset=QPoint(40, 40),
+            )
+            self.eta_dialog = self._show_plot_dialog(
+                rf"EFSA Szenario {scenario} ({material}) - eta_min",
+                self.eta_figure,
+                summary,
+                offset=QPoint(420, 160),
+            )
 
     def _export_plots(self):
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Plots exportieren (Basisname wählen)",
+            "Plots exportieren",
             "",
             "PNG (*.png);;PDF (*.pdf);;Alle Dateien (*)",
         )
         if not path:
             return
         try:
-            self.cmod_figure.savefig(path.replace(".", "_cmod." + path.split(".")[-1]))
-            self.eta_figure.savefig(path.replace(".", "_eta." + path.split(".")[-1]))
+            base, ext = os.path.splitext(path)
+            if not ext:
+                ext = ".png"
+            self.cmod_figure.savefig(f"{base}_cmod{ext}")
+            self.eta_figure.savefig(f"{base}_eta{ext}")
         except Exception as exc:
             self._set_error(f"Export fehlgeschlagen: {exc}")
+
+    def _show_plot_dialog(self, title: str, figure: Figure, summary_text: str, offset: QPoint):
+        if figure is None:
+            return None
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        layout = QVBoxLayout(dialog)
+
+        canvas = FigureCanvas(figure)
+        canvas.draw()
+        layout.addWidget(canvas)
+
+        summary_label = QLabel(summary_text)
+        summary_label.setWordWrap(True)
+        layout.addWidget(summary_label)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        save_btn = QPushButton("Plot speichern")
+        save_btn.setAutoDefault(False)
+        save_btn.setProperty("appStyle", False)
+        save_btn.clicked.connect(lambda: self._save_current_figure(figure, title))
+        button_row.addWidget(save_btn)
+        layout.addLayout(button_row)
+
+        dialog.resize(800, 600)
+        try:
+            base_pos = self.mapToGlobal(self.rect().topLeft())
+            dialog.move(base_pos + offset)
+        except Exception:
+            pass
+        dialog.show()
+        return dialog
+
+    def _save_current_figure(self, figure: Figure, title: str):
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"{title} speichern",
+            "",
+            "PNG (*.png);;PDF (*.pdf);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        try:
+            figure.savefig(path)
+        except Exception as exc:  # pylint: disable=broad-except
+            self._set_error(f"Plot konnte nicht gespeichert werden: {exc}")
 
 
 class ParameterVariationTab(SingleLayerTab):
@@ -1241,7 +1545,7 @@ class ParameterVariationTab(SingleLayerTab):
         self.param_max_input = QLineEdit()
         self.param_steps_input = QLineEdit("6")
         for field in (self.param_min_input, self.param_max_input, self.param_steps_input):
-            field.setFixedHeight(22)
+            field.setFixedHeight(24)
             field.setAlignment(Qt.AlignRight)
             field.setFixedWidth(self.input_width)
 

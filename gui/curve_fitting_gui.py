@@ -137,7 +137,7 @@ class CurveFittingTab(QWidget):
         table_layout.addLayout(table_header_layout)
 
         self.measurement_table = QTableWidget(0, 2)
-        self.measurement_table.setHorizontalHeaderLabels(["Zeit [Tage]", "Messwert [mg/kg]"])
+        self.measurement_table.setHorizontalHeaderLabels(["Zeit [Tage]", "C (exp.) [mg/kg]"])
         self.measurement_table.setFixedHeight(260)
         self.measurement_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         header = self.measurement_table.horizontalHeader()
