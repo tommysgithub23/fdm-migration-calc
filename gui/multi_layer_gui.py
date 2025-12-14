@@ -1,7 +1,11 @@
+import csv
+
+import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
-    QSizePolicy, QComboBox, QApplication, QDialog, QMenu, QTabWidget
+    QSizePolicy, QComboBox, QApplication, QDialog, QMenu, QTabWidget,
+    QFileDialog
 )
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QColor, QPalette
@@ -18,6 +22,8 @@ class MultiLayerTab(QWidget):
         self.label_width = 60
         self.input_width = 90
         self.unit_width = 20
+        self._last_results = {}
+        self.results_dialogs = []
 
         # Hauptlayout
         self.main_layout = QVBoxLayout(self)
@@ -32,8 +38,8 @@ class MultiLayerTab(QWidget):
         self.input_layout = QVBoxLayout()
         self.input_layout.setContentsMargins(0, 0, 0, 0)
         self.T_C_input = QLineEdit("40")
-        self.M_r_input = QLineEdit("531")
-        self.t_max_input = QLineEdit("1")
+        self.M_r_input = QLineEdit("136")
+        self.t_max_input = QLineEdit("10")
         self.d_nx_input = QLineEdit("0.02")
         self.tooltip_helper.register(self.T_C_input, "Temperatur der Simulation in °C.")
         self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten in g/mol.")
@@ -539,34 +545,167 @@ class MultiLayerTab(QWidget):
         )
 
         migration_fig = plot_migrated_mass_over_time(migrated_mass, time_points, save_path=None, show=False)
-        self._show_results_dialog([migration_fig, concentration_fig])
+        self._last_results = {
+            "migration": {
+                "time_points": time_points,
+                "migrated_mass": migrated_mass,
+                "figure": migration_fig,
+            },
+            "concentration": {
+                "C_values": C_values,
+                "C_init": C_init,
+                "x": x,
+                "layers": layers,
+                "dt": dt,
+                "figure": concentration_fig,
+            },
+        }
+        figures = [
+            ("Migrierte Masse über die Zeit", migration_fig, self._export_migration_csv),
+            ("Konzentrationsprofile", concentration_fig, self._export_concentration_csv),
+        ]
+        self._show_results_dialogs(figures)
 
-    def _show_results_dialog(self, figures):
-        valid_figures = [fig for fig in figures if fig is not None]
+    def _show_results_dialogs(self, figures):
+        valid_figures = [(title, fig, export_cb) for title, fig, export_cb in figures if fig is not None]
         if not valid_figures:
             return
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Berechnungsergebnisse")
-        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        # Vorherige Ergebnisfenster schließen
+        for dlg in getattr(self, "results_dialogs", []):
+            try:
+                dlg.close()
+            except RuntimeError:
+                pass
+        self.results_dialogs = []
 
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        for title, fig, export_cb in valid_figures:
+            dialog = QDialog(self)
+            dialog.setWindowTitle(title or "Berechnungsergebnis")
+            dialog.setAttribute(Qt.WA_DeleteOnClose, True)
 
-        for fig in valid_figures:
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(12, 12, 12, 12)
+            layout.setSpacing(12)
+
             canvas = FigureCanvas(fig)
             canvas.draw()
             layout.addWidget(canvas)
 
-        close_button = QPushButton("Schließen")
-        close_button.setProperty("appStyle", True)
-        close_button.clicked.connect(dialog.accept)
-        layout.addWidget(close_button, alignment=Qt.AlignRight)
+            button_row = QHBoxLayout()
+            button_row.addStretch(1)
 
-        dialog.resize(800, 1200)
-        dialog.show()
-        self.results_dialog = dialog
+            export_btn = QPushButton("Ergebnisse exportieren")
+            export_btn.setProperty("appStyle", False)
+            if export_cb:
+                export_btn.clicked.connect(export_cb)
+            button_row.addWidget(export_btn)
+
+            save_btn = QPushButton("Plot speichern")
+            save_btn.setProperty("appStyle", False)
+            save_btn.clicked.connect(lambda _, f=fig: self._save_plot(f))
+            button_row.addWidget(save_btn)
+
+            layout.addLayout(button_row)
+
+            dialog.resize(1200, 600)
+            dialog.show()
+            self.results_dialogs.append(dialog)
+
+    def _save_plot(self, figure):
+        if figure is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Plot speichern",
+            "",
+            "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        try:
+            figure.savefig(path)
+        except Exception:
+            pass  # Wir unterdrücken Fehlermeldungen; GUI bleibt responsiv
+
+    def _export_migration_csv(self):
+        data = self._last_results.get("migration") or {}
+        time_points = data.get("time_points")
+        migrated_mass = data.get("migrated_mass")
+        if time_points is None or migrated_mass is None:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Ergebnisse exportieren",
+            "",
+            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["Zeit [Tage]", "Migrierte Masse"])
+                for t, mass in zip(time_points, migrated_mass):
+                    writer.writerow([t / 86400.0, mass])
+        except Exception:
+            pass
+
+    def _export_concentration_csv(self):
+        data = self._last_results.get("concentration") or {}
+        C_values = data.get("C_values")
+        C_init = data.get("C_init")
+        x = data.get("x")
+        dt = data.get("dt")
+        layers = data.get("layers")
+        if C_values is None or C_init is None or x is None or dt is None or not layers:
+            return
+
+        time_steps = np.linspace(0, len(C_values) - 1, num=10, dtype=int).astype(int)
+        headers = ["x [cm]", "Schicht"]
+        for t in time_steps:
+            time_days = (t * dt) / 86400.0
+            headers.append(f"t={time_days:.3g} d")
+
+        # Zuordnung jeder x-Position zur passenden Schicht
+        layer_spans = []
+        current = x[0]
+        for layer in layers:
+            end = current + layer.d
+            layer_spans.append((current, end, layer.material))
+            current = end
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Ergebnisse exportieren",
+            "",
+            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(headers)
+                for idx, pos in enumerate(x):
+                    # Bestimme Schichtname für diese Position
+                    layer_name = ""
+                    for start, end, name in layer_spans:
+                        if start <= pos < end or abs(pos - end) < 1e-9:
+                            layer_name = name
+                            break
+                    row = [pos, layer_name]
+                    for t in time_steps:
+                        if t == 0:
+                            row.append(C_init[idx])
+                        else:
+                            row.append(C_values[t][idx])
+                    writer.writerow(row)
+        except Exception:
+            pass
 
 
 class MultiLayerSuiteTab(QWidget):

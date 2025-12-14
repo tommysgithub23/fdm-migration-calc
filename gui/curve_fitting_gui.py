@@ -26,6 +26,7 @@ from sl_model_curve_fitting import (
     migrationsmodell_piringer_for_curve_fitting,
     plot_migration_results,
 )
+from tooltip_helper import DelayedToolTipHelper
 
 
 class CurveFittingTab(QWidget):
@@ -36,6 +37,7 @@ class CurveFittingTab(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.tooltip_helper = DelayedToolTipHelper(parent=self)
         self.canvas: FigureCanvas | None = None
         self.saved_plot_path: str | None = None
         self._validation_message: str = ""
@@ -98,6 +100,17 @@ class CurveFittingTab(QWidget):
         ):
             self._configure_line_edit(fld)
 
+        self.tooltip_helper.register(self.surrogate_input, "Name oder Identifikation des betrachteten Migranten/Surrogats.")
+        self.tooltip_helper.register(self.temperature_input, "Temperatur der Messung in °C.")
+        self.tooltip_helper.register(self.c_p0_input, "Anfangskonzentration cₚ₀ im Polymer in mg/kg.")
+        self.tooltip_helper.register(self.p_density_input, "Dichte des Polymers ρₚ in g/cm³.")
+        self.tooltip_helper.register(self.f_density_input, "Dichte der Kontaktphase ρ_F in g/cm³.")
+        self.tooltip_helper.register(self.k_pf_input, "Verteilungskoeffizient K_PF zwischen Polymer und Kontaktphase.")
+        self.tooltip_helper.register(self.v_p_input, "Volumen des Polymers V_P in cm³.")
+        self.tooltip_helper.register(self.v_f_input, "Volumen der Kontaktphase V_F in cm³.")
+        self.tooltip_helper.register(self.a_pf_input, "Kontaktfläche A_PF zwischen Polymer und Kontaktphase in dm².")
+        self.tooltip_helper.register(self.dt_input, "Zeitschritt Δt der Simulation in Sekunden.")
+
         left_column = QVBoxLayout()
         left_column.setSpacing(6)
         left_column.setContentsMargins(0, 0, 0, 0)
@@ -147,12 +160,18 @@ class CurveFittingTab(QWidget):
         self.measurement_table.installEventFilter(self)
         self.measurement_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.measurement_table.customContextMenuRequested.connect(self._show_measurement_context_menu)
+        self.tooltip_helper.register(
+            self.measurement_table,
+            "Messwerte eingeben: Zeit in Tagen und gemessene Konzentration C (exp.) in mg/kg. Enter in letzter Zeile fügt eine neue Zeile hinzu."
+        )
 
         import_button = QPushButton("Messwerte importieren")
         import_button.clicked.connect(self._import_measurements_from_excel)
         calculate_button = QPushButton("Berechnung starten")
         calculate_button.setProperty("appStyle", True)
         calculate_button.clicked.connect(self.calculate_coefficient)
+        self.tooltip_helper.register(import_button, "Messwerte aus einer Excel- oder CSV-Datei laden.")
+        self.tooltip_helper.register(calculate_button, "Berechnet den Diffusionskoeffizienten aus den angegebenen Messpunkten.")
         import_row = QHBoxLayout()
         import_row.setSpacing(6)
         import_row.setContentsMargins(0, 6, 0, 0)

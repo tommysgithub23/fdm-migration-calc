@@ -921,6 +921,7 @@ class EFSAExtendedTab(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.tooltip_helper = DelayedToolTipHelper(parent=self)
         self.measurement_points = []  # Liste von Dicts mit keys: Mr, C_mod, eta_min (optional)
         self._fields = []
         self.cmod_dialog = None
@@ -952,6 +953,8 @@ class EFSAExtendedTab(QWidget):
         self.c_ref_input = QLineEdit("3.0")
         self.material_combo = QComboBox()
         self.material_combo.addItems(["PET", "LDPE", "LLDPE", "HDPE", "PP", "PS", "PEN", "HIPS"])
+        self.tooltip_helper.register(self.material_combo, "Material der Polymerschicht auswählen.")
+        self.tooltip_helper.register(self.scenario_combo, "EFSA-Szenario A, B oder C festlegen.")
 
         for fld in (self.mr_min_input, self.mr_max_input, self.points_input, self.c_ref_input):
             fld.setFixedWidth(90)
@@ -959,6 +962,10 @@ class EFSAExtendedTab(QWidget):
             fld.setFixedHeight(24)
             self._fields.append(fld)
             fld.textChanged.connect(lambda _, f=fld: self._validate_numeric_input(f))
+        self.tooltip_helper.register(self.mr_min_input, "Untere Grenze des Molekulargewichtsbereichs M_r in g/mol.")
+        self.tooltip_helper.register(self.mr_max_input, "Obere Grenze des Molekulargewichtsbereichs M_r in g/mol.")
+        self.tooltip_helper.register(self.points_input, "Anzahl Stützstellen (n) im Molekulargewichtsbereich.")
+        self.tooltip_helper.register(self.c_ref_input, "Referenzkonzentration c_ref in mg/kg.")
 
         left_col = QVBoxLayout()
         left_col.setSpacing(6)
@@ -985,6 +992,10 @@ class EFSAExtendedTab(QWidget):
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         self.measurement_table.setFixedHeight(260)
         self.measurement_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.tooltip_helper.register(
+            self.measurement_table,
+            "Messpunkte optional ergänzen: Molekulargewicht Mr sowie gemessene C_mod und/oder eta_min eingeben."
+        )
         self.cmod_figure = Figure(figsize=(6, 4))
         self.eta_figure = Figure(figsize=(6, 4))
 
@@ -998,6 +1009,8 @@ class EFSAExtendedTab(QWidget):
         calc_btn.setFixedHeight(26)
         calc_btn.setProperty("appStyle", True)
         calc_btn.clicked.connect(lambda: self.update_plots(show_dialogs=True))
+        self.tooltip_helper.register(import_btn, "Messwerte aus Excel oder CSV importieren.")
+        self.tooltip_helper.register(calc_btn, "Berechnet die EFSA-Kurven für C_mod und eta_min.")
         button_row.addWidget(import_btn)
         button_row.addStretch(1)  # spannt die Zeile, damit der Start-Button rechts sitzt
         button_row.addWidget(calc_btn, 0, Qt.AlignRight)
@@ -1539,6 +1552,10 @@ class ParameterVariationTab(SingleLayerTab):
         self.parameter_dropdown = QComboBox()
         self.parameter_dropdown.addItems(self.parameter_options)
         self._apply_input_width(self.parameter_dropdown)
+        self.tooltip_helper.register(
+            self.parameter_dropdown,
+            "Wähle, welcher Parameter variiert werden soll (x-Achse der Parametervariation)."
+        )
         controls_layout.addWidget(self._create_parameter_form_row("x", self.parameter_dropdown))
 
         self.param_min_input = QLineEdit()
@@ -1548,6 +1565,9 @@ class ParameterVariationTab(SingleLayerTab):
             field.setFixedHeight(24)
             field.setAlignment(Qt.AlignRight)
             field.setFixedWidth(self.input_width)
+        self.tooltip_helper.register(self.param_min_input, "Untergrenze des gewählten Parameters.")
+        self.tooltip_helper.register(self.param_max_input, "Obergrenze des gewählten Parameters.")
+        self.tooltip_helper.register(self.param_steps_input, "Anzahl diskreter Schritte zwischen Minimum und Maximum (≥ 2).")
 
         min_widget, self.param_min_unit_label = self._create_range_row("x<sub>min</sub>", self.param_min_input)
         max_widget, self.param_max_unit_label = self._create_range_row("x<sub>max</sub>", self.param_max_input)
@@ -1574,6 +1594,10 @@ class ParameterVariationTab(SingleLayerTab):
         self.start_button.setFixedHeight(28)
         self.start_button.setProperty("appStyle", True)
         self.start_button.clicked.connect(self.start_parameter_variation)
+        self.tooltip_helper.register(
+            self.start_button,
+            "Startet die Parametervariation und zeigt Migration sowie Parameterfläche an."
+        )
 
         button_row = QHBoxLayout()
         button_row.addWidget(self.error_label, 1)

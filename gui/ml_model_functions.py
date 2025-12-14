@@ -436,9 +436,7 @@ def plot_results(C_values, C_init, x, layers, tabler,
     else:
         time_steps = np.linspace(0, Nt-1, num=steps_to_plot, dtype=int).astype(int)
 
-    # --- Hier ändert sich nur diese Zeile ---
-    fig, ax = plt.subplots(figsize=(10, 6), tight_layout=True)
-    # ------------------------------------------------
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     # Zeitlinien plotten
     time_lines = []
@@ -511,6 +509,9 @@ def plot_results(C_values, C_init, x, layers, tabler,
                         fontsize=12, 
                         bbox_to_anchor=(1, 1))
     ax.add_artist(legend2)
+
+    # Zusätzlichen Rand lassen, damit die Layer-Legende rechts nicht abgeschnitten wird
+    fig.subplots_adjust(left=0.1, right=0.8, top=0.95, bottom=0.12)
 
     # Speichern und Anzeigen
     if save_path:
