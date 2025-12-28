@@ -5,12 +5,20 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QLineEdit, QHBoxLayout, QGraphicsView, QGraphicsScene,
     QSizePolicy, QComboBox, QApplication, QDialog, QMenu, QTabWidget,
-    QFileDialog
+    QFileDialog, QHeaderView, QCheckBox
 )
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QColor, QPalette
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from ml_model_functions import Layer, run_simulation, plot_results, plot_migrated_mass_over_time, calculate_migrated_mass_over_time
+from ml_model_functions import (
+    Layer,
+    run_simulation,
+    plot_results,
+    plot_migrated_mass_over_time,
+    calculate_migrated_mass_over_time,
+    calculate_migrated_mass_over_time_by_layer,
+    plot_migrated_mass_over_time_by_layer,
+)
 from tooltip_helper import DelayedToolTipHelper
 
 
@@ -19,7 +27,7 @@ class MultiLayerTab(QWidget):
         super().__init__()
         self.material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
         self.tooltip_helper = DelayedToolTipHelper(parent=self)
-        self.label_width = 60
+        self.label_width = 70
         self.input_width = 90
         self.unit_width = 20
         self._last_results = {}
@@ -37,28 +45,63 @@ class MultiLayerTab(QWidget):
         # Eingabebereich (linke Spalte)
         self.input_layout = QVBoxLayout()
         self.input_layout.setContentsMargins(0, 0, 0, 0)
-        self.T_C_input = QLineEdit("40")
+        self.T_C_input = QLineEdit("25")
         self.M_r_input = QLineEdit("136")
         self.t_max_input = QLineEdit("10")
+        self.dt_input = QLineEdit("1000")
         self.d_nx_input = QLineEdit("0.02")
+        self.threshold_input = QLineEdit("1e-5")
+        self.threshold_checkbox = QCheckBox("")
+        self.threshold_input.setEnabled(False)
+        self.threshold_input.setFixedHeight(25)
+        self.threshold_input.setFixedWidth(self.input_width)
+        self.threshold_input.setAlignment(Qt.AlignRight)
         self.tooltip_helper.register(self.T_C_input, "Temperatur der Simulation in °C.")
         self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten in g/mol.")
         self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation in Tagen (wird in Sekunden umgerechnet).")
+        self.tooltip_helper.register(self.dt_input, "Zeitschrittgröße in Sekunden.")
         self.tooltip_helper.register(self.d_nx_input, "Verhältnis von Schichtdicke zu räumlicher Diskretisierung d/nₓ in cm.")
+        self.tooltip_helper.register(self.threshold_checkbox, "Grenzwertlinie im Migrationsplot aktivieren.")
+        self.tooltip_helper.register(self.threshold_input, "Grenzwert für die Migrationsmenge in mg/dm².")
 
         # Validierung verbinden
-        for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.d_nx_input):
+        for fld in (self.T_C_input, self.M_r_input, self.t_max_input, self.dt_input, self.d_nx_input):
             fld.textChanged.connect(lambda _, f=fld: self.validate_field(f))
 
         # Signale verbinden
         self.d_nx_input.textChanged.connect(self.update_all_nx_from_ratio)
         self.d_nx_input.textChanged.connect(lambda _: self.validate_field(self.d_nx_input))
+        self.threshold_checkbox.toggled.connect(self.threshold_input.setEnabled)
+        self.threshold_checkbox.toggled.connect(lambda _: self.validate_inputs())
+        self.threshold_input.textChanged.connect(
+            lambda: self.validate_field(self.threshold_input)
+            if self.threshold_checkbox.isChecked()
+            else None
+        )
 
         # Nutze addWidget und setze die Elemente linksbündig
         self.input_layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
         self.input_layout.addWidget(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
         self.input_layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "Tage", self.t_max_input))
+        self.input_layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
         self.input_layout.addWidget(self._create_labeled_row("d/n<sub>x</sub>", "cm", self.d_nx_input))
+        threshold_row = QHBoxLayout()
+        threshold_row.setSpacing(6)
+        threshold_row.setContentsMargins(0, 0, 0, 0)
+        threshold_label = QLabel("<html>Grenzwert</html>")
+        threshold_label.setMinimumWidth(self.label_width)
+        threshold_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        threshold_unit = QLabel("mg/dm²")
+        threshold_unit.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        threshold_unit.setMinimumWidth(self.unit_width)
+        threshold_row.addWidget(threshold_label)
+        threshold_row.addWidget(self.threshold_input)
+        threshold_row.addWidget(threshold_unit)
+        threshold_row.addWidget(self.threshold_checkbox)
+        threshold_row.addStretch()
+        threshold_container = QWidget()
+        threshold_container.setLayout(threshold_row)
+        self.input_layout.addWidget(threshold_container)
         self.input_layout.setAlignment(Qt.AlignLeft)  # Links-Ausrichtung für den gesamten Eingabebereich
         self.input_layout.setSpacing(6)
 
@@ -72,20 +115,30 @@ class MultiLayerTab(QWidget):
         left_column.addStretch()
 
         # --- Schichtentabelle (rechte Spalte, oberer Bereich) ---
-        self.layer_table = QTableWidget(0, 5)
-        headers = ["Material", "d (cm)", "nₓ", "Kₓ", "C₀ (mg/kg)"]
+        self.layer_table = QTableWidget(0, 6)
+        headers = ["Material", "d (cm)", "nₓ", "Kₓ", "c₀ (mg/kg)", "ρ (g/cm³)"]
         self.layer_table.setHorizontalHeaderLabels(headers)
         self.column_tooltips = {
             0: "Materialtyp der Schicht.",
             1: "Schichtdicke d in Zentimetern.",
             2: "Anzahl der Diskretisierungselemente nₓ.",
             3: "Verteilungskoeffizient Kₓ zur nächsten Schicht.",
-            4: "Anfangskonzentration C₀ der Schicht in mg/kg."
+            4: "Anfangskonzentration c₀ der Schicht in mg/kg.",
+            5: "Dichte ρ der Schicht in g/cm³."
         }
         for col, text in self.column_tooltips.items():
             header_item = self.layer_table.horizontalHeaderItem(col)
             if header_item:
                 header_item.setToolTip(text)
+        header = self.layer_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Fixed)
+        self.layer_table.setColumnWidth(0, 100)
+        self.layer_table.setColumnWidth(1, 90)
+        self.layer_table.setColumnWidth(2, 90)
+        self.layer_table.setColumnWidth(3, 90)
+        self.layer_table.setColumnWidth(4, 90)
+        self.layer_table.setColumnWidth(5, 90)
+        self.layer_table.setMinimumHeight(130)
         self.tooltip_helper.register(
             self.layer_table,
             "Tabelle der Schichten: Doppelklick auf eine Zelle, um Werte zu bearbeiten."
@@ -130,7 +183,7 @@ class MultiLayerTab(QWidget):
         graphics_section = QVBoxLayout()
         graphics_section.setSpacing(6)
         graphics_section.setContentsMargins(0, 0, 0, 0)
-        graphics_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        graphics_label = QLabel("<b>Grafische Darstellung</b>")
         graphics_label.setAlignment(Qt.AlignLeft)
         graphics_section.addWidget(graphics_label)
         graphics_section.addWidget(self.graphics_view)
@@ -182,6 +235,7 @@ class MultiLayerTab(QWidget):
         # Tabelle mit zwei Spalten als Start vorbereiten
         self.add_contact_phase()
         self.add_layer()
+        self.update_all_nx_from_ratio()
 
     def eventFilter(self, obj, event):
         if obj is self.layer_table and event.type() == QEvent.KeyPress:
@@ -273,6 +327,7 @@ class MultiLayerTab(QWidget):
             self.T_C_input,
             self.M_r_input,
             self.t_max_input,
+            self.dt_input,
             self.d_nx_input,
         )
         for field in scalar_fields:
@@ -282,8 +337,23 @@ class MultiLayerTab(QWidget):
                 self.mark_field_invalid(field)
                 is_valid = False
 
+        if self.threshold_checkbox.isChecked():
+            if self.is_valid_number(self.threshold_input.text()):
+                try:
+                    if float(self.threshold_input.text()) <= 0:
+                        raise ValueError
+                    self.mark_field_valid(self.threshold_input)
+                except ValueError:
+                    self.mark_field_invalid(self.threshold_input)
+                    is_valid = False
+            else:
+                self.mark_field_invalid(self.threshold_input)
+                is_valid = False
+        else:
+            self.mark_field_valid(self.threshold_input)
+
         for row in range(self.layer_table.rowCount()):
-            for col in (1, 2, 3, 4):
+            for col in (1, 2, 3, 4, 5):
                 if not self._validate_table_value(row, col):
                     is_valid = False
 
@@ -312,7 +382,7 @@ class MultiLayerTab(QWidget):
         self.update_nx_on_d_change(row, col)
 
         # 2) Validierung für numerische Spalten:
-        if col in (1, 2, 3, 4):
+        if col in (1, 2, 3, 4, 5):
             self._validate_table_value(row, col)
 
     def show_error_message(self, msg: str):
@@ -330,7 +400,7 @@ class MultiLayerTab(QWidget):
         self.layer_table.setCellWidget(insert_at, 0, material_dropdown)
 
         # --- Spalten 1 bis 4: normale Eingabefelder ---
-        default_values = ["0.2", "10", "1.0", "0.0"]
+        default_values = ["0.2", "10", "1.0", "0.0", "1.0"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
@@ -421,7 +491,7 @@ class MultiLayerTab(QWidget):
         contact_material.setToolTip(self.column_tooltips.get(0, ""))
         self.layer_table.setItem(row_count, 0, contact_material)
 
-        default_values = ["2.0", "10", "1.0", "0.0"]
+        default_values = ["2.0", "10", "1.0", "0.0", "0.9"]
         for col, value in enumerate(default_values, start=1):
             item = QTableWidgetItem(value)
             item.setTextAlignment(Qt.AlignCenter)
@@ -521,8 +591,7 @@ class MultiLayerTab(QWidget):
         # t_max wird in Tagen eingegeben → in Sekunden umrechnen
         t_max_days = float(self.t_max_input.text())
         t_max = t_max_days * 24 * 3600
-        # Verwende festen Zeitschritt (kann später als Eingabe ergänzt werden)
-        dt = 1.0  
+        dt = float(self.dt_input.text())
 
         # 4) Layer-Liste bauen
         layers = []
@@ -532,7 +601,8 @@ class MultiLayerTab(QWidget):
             nx      = int(float(self.layer_table.item(row, 2).text()))
             K_val   = float(self.layer_table.item(row, 3).text())
             C_init  = float(self.layer_table.item(row, 4).text())
-            layer = Layer(material, d, nx, K_val, C_init)       # :contentReference[oaicite:3]{index=3}
+            density = float(self.layer_table.item(row, 5).text())
+            layer = Layer(material, d, nx, K_val, C_init, density=density)       # :contentReference[oaicite:3]{index=3}
             layer.set_diffusion_coefficient(M_r, T_C)            # :contentReference[oaicite:4]{index=4}
             layers.append(layer)
 
@@ -543,13 +613,40 @@ class MultiLayerTab(QWidget):
         migrated_mass, time_points = calculate_migrated_mass_over_time(
             C_values, x, layers, dt, calc_interval=1
         )
+        migrated_mass_by_layer, layer_time_points = calculate_migrated_mass_over_time_by_layer(
+            C_values, x, layers, dt, calc_interval=1
+        )
+        threshold = None
+        if self.threshold_checkbox.isChecked():
+            try:
+                threshold = float(self.threshold_input.text())
+            except ValueError:
+                threshold = None
 
-        migration_fig = plot_migrated_mass_over_time(migrated_mass, time_points, save_path=None, show=False)
+        migration_fig = plot_migrated_mass_over_time(
+            migrated_mass,
+            time_points,
+            save_path=None,
+            show=False,
+            threshold=threshold,
+        )
+        migration_by_layer_fig = plot_migrated_mass_over_time_by_layer(
+            migrated_mass_by_layer,
+            layer_time_points,
+            layers,
+            save_path=None,
+            show=False,
+        )
         self._last_results = {
             "migration": {
                 "time_points": time_points,
                 "migrated_mass": migrated_mass,
                 "figure": migration_fig,
+            },
+            "migration_by_layer": {
+                "time_points": layer_time_points,
+                "migrated_mass_by_layer": migrated_mass_by_layer,
+                "figure": migration_by_layer_fig,
             },
             "concentration": {
                 "C_values": C_values,
@@ -561,13 +658,18 @@ class MultiLayerTab(QWidget):
             },
         }
         figures = [
-            ("Migrierte Masse über die Zeit", migration_fig, self._export_migration_csv),
-            ("Konzentrationsprofile", concentration_fig, self._export_concentration_csv),
+            ("Berechnungsergebnis - Migrationsberechnung", migration_fig, self._export_migration_csv, "migration"),
+            ("Konzentrationsprofile", concentration_fig, self._export_concentration_csv, "concentration"),
+            ("Migration je Schicht", migration_by_layer_fig, self._export_migration_by_layer_csv, "migration_by_layer"),
         ]
         self._show_results_dialogs(figures)
 
     def _show_results_dialogs(self, figures):
-        valid_figures = [(title, fig, export_cb) for title, fig, export_cb in figures if fig is not None]
+        valid_figures = [
+            (title, fig, export_cb, kind)
+            for title, fig, export_cb, kind in figures
+            if fig is not None
+        ]
         if not valid_figures:
             return
 
@@ -579,7 +681,7 @@ class MultiLayerTab(QWidget):
                 pass
         self.results_dialogs = []
 
-        for title, fig, export_cb in valid_figures:
+        for title, fig, export_cb, kind in valid_figures:
             dialog = QDialog(self)
             dialog.setWindowTitle(title or "Berechnungsergebnis")
             dialog.setAttribute(Qt.WA_DeleteOnClose, True)
@@ -592,25 +694,76 @@ class MultiLayerTab(QWidget):
             canvas.draw()
             layout.addWidget(canvas)
 
+            summary = self._build_results_summary(kind)
+            if summary:
+                summary_label = QLabel(summary)
+                summary_label.setWordWrap(True)
+                layout.addWidget(summary_label)
+
             button_row = QHBoxLayout()
             button_row.addStretch(1)
 
-            export_btn = QPushButton("Ergebnisse exportieren")
-            export_btn.setProperty("appStyle", False)
-            if export_cb:
-                export_btn.clicked.connect(export_cb)
-            button_row.addWidget(export_btn)
-
             save_btn = QPushButton("Plot speichern")
             save_btn.setProperty("appStyle", False)
+            save_btn.setAutoDefault(False)
             save_btn.clicked.connect(lambda _, f=fig: self._save_plot(f))
             button_row.addWidget(save_btn)
 
+            if export_cb:
+                export_btn = QPushButton("CSV exportieren")
+                export_btn.setProperty("appStyle", False)
+                export_btn.setAutoDefault(False)
+                export_btn.clicked.connect(export_cb)
+                button_row.addWidget(export_btn)
+
             layout.addLayout(button_row)
 
-            dialog.resize(1200, 600)
+            dialog.resize(1000, 600)
             dialog.show()
             self.results_dialogs.append(dialog)
+
+    def _build_results_summary(self, kind: str) -> str:
+        if kind == "migration":
+            data = self._last_results.get("migration") or {}
+            time_points = data.get("time_points")
+            migrated_mass = data.get("migrated_mass")
+            if time_points is None or migrated_mass is None or len(time_points) == 0 or len(migrated_mass) == 0:
+                return ""
+            max_idx = int(np.argmax(migrated_mass))
+            max_migration = float(migrated_mass[max_idx])
+            max_time_days = float(time_points[max_idx]) / 86400.0
+            last_migration = float(migrated_mass[-1])
+            last_time_days = float(time_points[-1]) / 86400.0
+            dt = self._last_results.get("concentration", {}).get("dt")
+            layers = self._last_results.get("concentration", {}).get("layers") or []
+            total_d = sum(layer.d for layer in layers) if layers else None
+            dt_text = f"{dt:.3g} s" if isinstance(dt, (int, float)) else "-"
+            thickness_text = f"{total_d:.3g} cm" if total_d is not None else "-"
+            return (
+                "<b>Zusammenfassung</b><br>"
+                f"Max. Migration: {max_migration:.3g} mg/dm² bei {max_time_days:.3g} Tagen<br>"
+                f"Endwert: {last_migration:.3g} mg/dm² nach {last_time_days:.3g} Tagen<br>"
+                f"Δt: {dt_text}; Schichten: {len(layers)}; Gesamtstärke: {thickness_text}"
+            )
+
+        if kind == "concentration":
+            data = self._last_results.get("concentration") or {}
+            layers = data.get("layers") or []
+            dt = data.get("dt")
+            total_d = sum(layer.d for layer in layers) if layers else None
+            time_points = self._last_results.get("migration", {}).get("time_points")
+            last_time_days = float(time_points[-1]) / 86400.0 if time_points is not None and len(time_points) else None
+            dt_text = f"{dt:.3g} s" if isinstance(dt, (int, float)) else "-"
+            thickness_text = f"{total_d:.3g} cm" if total_d is not None else "-"
+            time_text = f"{last_time_days:.3g} Tage" if last_time_days is not None else "-"
+            materials = ", ".join([layer.material for layer in layers]) if layers else "-"
+            return (
+                "<b>Zusammenfassung</b><br>"
+                f"Schichten: {len(layers)}; Materialien: {materials}<br>"
+                f"Gesamtstärke: {thickness_text}; Simulationsdauer: {time_text}; Δt: {dt_text}"
+            )
+
+        return ""
 
     def _save_plot(self, figure):
         if figure is None:
@@ -650,6 +803,41 @@ class MultiLayerTab(QWidget):
                 writer.writerow(["Zeit [Tage]", "Migrierte Masse"])
                 for t, mass in zip(time_points, migrated_mass):
                     writer.writerow([t / 86400.0, mass])
+        except Exception:
+            pass
+
+    def _export_migration_by_layer_csv(self):
+        data = self._last_results.get("migration_by_layer") or {}
+        time_points = data.get("time_points")
+        migrated_by_layer = data.get("migrated_mass_by_layer")
+        layers = self._last_results.get("concentration", {}).get("layers") or []
+        if time_points is None or migrated_by_layer is None or not layers:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Ergebnisse exportieren",
+            "",
+            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "w", newline="") as handle:
+                writer = csv.writer(handle)
+                header = ["Zeit [Tage]"]
+                for idx, layer in enumerate(layers):
+                    header.append(f"Layer {idx + 1} ({layer.material})")
+                writer.writerow(header)
+
+                series_list = list(migrated_by_layer)
+                min_len = min(len(time_points), *(len(series) for series in series_list))
+                for i in range(min_len):
+                    row = [time_points[i] / 86400.0]
+                    for series in series_list:
+                        row.append(series[i])
+                    writer.writerow(row)
         except Exception:
             pass
 

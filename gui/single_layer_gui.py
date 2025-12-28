@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog,
                                QDialog, QHeaderView)
 from sl_model_package.EFSA_extended import (
     generate_curves,
-    compute_cmod_efsa,
     compute_eta_min_efsa,
     DEFAULT_MATERIAL,
 )
@@ -138,19 +137,19 @@ class SingleLayerTab(QWidget):
 
         # Add input fields
         self.T_C_input = QLineEdit("25")
-        self.t_max_input = QLineEdit("1000")
+        self.t_max_input = QLineEdit("864000") # 10 Tage in Sekunden
         self.M_r_input = QLineEdit("136")
         self.c_P0_input = QLineEdit("100")
         self.P_density_input = QLineEdit("1")
-        self.F_density_input = QLineEdit("1")
-        self.D_P_known_input = QLineEdit()
-        self.D_P_checkbox = QCheckBox("Bekannt")  # Checkbox to toggle D_P_known_input
+        self.F_density_input = QLineEdit("0.9")
+        self.D_P_known_input = QLineEdit("10e-8")
+        self.D_P_checkbox = QCheckBox("")  # Checkbox to toggle D_P_known_input
         self.tooltip_helper.register(
             self.D_P_checkbox,
             "Aktivieren, um einen bekannten Diffusionskoeffizienten D_P einzugeben."
         )
         self.K_PF_input = QLineEdit("1")
-        self.dt_input = QLineEdit("1")
+        self.dt_input = QLineEdit("1000")
 
         # Material dropdown
         material_list = ["LDPE", "LLDPE", "HDPE", "PP", "PET", "PS", "PEN", "HIPS"]
@@ -384,7 +383,7 @@ class SingleLayerTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Überschrift
-        headline_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        headline_label = QLabel("<b>Grafische Darstellung</b>")
         headline_label.setAlignment(Qt.AlignLeft)
         layout.addWidget(headline_label)
 
@@ -664,8 +663,8 @@ class SingleLayerTab(QWidget):
         t_max = float(self.t_max_input.text())
         d_P = float(self.d_P_input.text())
         V_P = float(self.V_P_input.text())
-        d_F = float(self.d_P_input.text())
-        V_F = float(self.V_P_input.text())
+        d_F = float(self.d_F_input.text())
+        V_F = float(self.V_F_input.text())
 
         # Geometrische Größen
         A_PF = float(self.A_PF_input.text())
@@ -868,6 +867,10 @@ class ParameterVariationPopup(QWidget):
         self.save_button.setProperty("appStyle", False)
         self.save_button.clicked.connect(self.save_plot)
         button_row.addWidget(self.save_button)
+        self.export_button = QPushButton("CSV exportieren")
+        self.export_button.setProperty("appStyle", False)
+        self.export_button.clicked.connect(self.export_results)
+        button_row.addWidget(self.export_button)
         layout.addLayout(button_row)
 
         self._plot_surface()
@@ -911,6 +914,49 @@ class ParameterVariationPopup(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "Speichern fehlgeschlagen", f"Plot konnte nicht gespeichert werden:\n{exc}")
 
+    def export_results(self):
+        """Exportiert die Ergebnisse der Parametervariation als CSV-Datei."""
+        if not self.parameter_values:
+            QMessageBox.warning(self, "Export fehlgeschlagen", "Keine Parameterwerte verfügbar.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Ergebnisse exportieren",
+            "",
+            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+        header_name = self.parameter_name
+        if self.parameter_unit:
+            header_name = f"{self.parameter_name} ({self.parameter_unit})"
+        try:
+            time_days = np.arange(
+                0,
+                self.fixed_params["t_max"] / (3600 * 24),
+                self.fixed_params["dt"] / (3600 * 24),
+            )
+            def _fmt_decimal(val: float) -> str:
+                text = f"{val:.12f}".rstrip("0").rstrip(".")
+                return text.replace(".", ",")
+
+            with open(path, "w", newline="", encoding="utf-8") as csvfile:
+                writer = csv.writer(csvfile, delimiter=";")
+                writer.writerow([header_name, "Zeit (Tage)", "Migration (mg/dm^2)"])
+                for value in self.parameter_values:
+                    kwargs = self.fixed_params.copy()
+                    kwargs[self.parameter_name] = value
+                    kwargs["simulation_case"] = self.simulation_case
+                    migration_data = migrationsmodell_piringer(**kwargs)
+                    for idx, t in enumerate(time_days[:len(migration_data)]):
+                        writer.writerow([
+                            _fmt_decimal(value),
+                            _fmt_decimal(t),
+                            _fmt_decimal(migration_data[idx]),
+                        ])
+        except Exception as exc:
+            QMessageBox.warning(self, "Export fehlgeschlagen", f"CSV-Export fehlgeschlagen:\n{exc}")
+
 
 class EFSAExtendedTab(QWidget):
     """
@@ -926,6 +972,7 @@ class EFSAExtendedTab(QWidget):
         self._fields = []
         self.cmod_dialog = None
         self.eta_dialog = None
+        self._last_efsa_data = None
 
         self.label_width = 60
         self.input_width = 90
@@ -1054,7 +1101,7 @@ class EFSAExtendedTab(QWidget):
         container.setLayout(row)
         return container
 
-    def _collect_measurements(self, scenario: str, c_ref: float):
+    def _collect_measurements(self):
         points = []
         rows = self.measurement_table.rowCount()
         for r in range(rows):
@@ -1083,18 +1130,6 @@ class EFSAExtendedTab(QWidget):
                 eta_val = float(eta_txt) if eta_txt else None
             except ValueError:
                 continue
-
-            # Fehlende Werte aus EFSA-Formeln ergänzen (zur Anzeige)
-            if cmod_val is None:
-                try:
-                    cmod_val = compute_cmod_efsa(mr_val, scenario, c_ref)
-                except Exception:
-                    cmod_val = None
-            if eta_val is None:
-                try:
-                    eta_val = compute_eta_min_efsa(mr_val, scenario, c_ref)
-                except Exception:
-                    eta_val = None
 
             points.append({"Mr": mr_val, "C_mod": cmod_val, "eta_min": eta_val})
 
@@ -1243,7 +1278,7 @@ class EFSAExtendedTab(QWidget):
                     self.measurement_table.setItem(r, col, item)
 
             self._validate_measurement_table()
-            self.measurement_points = self._collect_measurements(scenario, c_ref)
+            self.measurement_points = self._collect_measurements()
             self.update_plots(show_dialogs=False)
         except Exception as exc:
             self._set_error(f"Import fehlgeschlagen: {exc}")
@@ -1323,7 +1358,7 @@ class EFSAExtendedTab(QWidget):
             if not valid_table:
                 self._set_error(table_msg or "Bitte korrigiere die rot markierten Messwerte.")
                 return
-            self.measurement_points = self._collect_measurements(scenario, c_ref)
+            self.measurement_points = self._collect_measurements()
         except ValueError as exc:
             self._set_error(str(exc))
             return
@@ -1332,6 +1367,15 @@ class EFSAExtendedTab(QWidget):
         material = self.material_combo.currentText() or DEFAULT_MATERIAL
         M_r_values, C_mod_values, _ = generate_curves(mr_min, mr_max, points, scenario, material, c_ref)
         eta_min_values = [compute_eta_min_efsa(mr, scenario, c_ref) for mr in M_r_values]
+        self._last_efsa_data = {
+            "M_r_values": M_r_values,
+            "C_mod_values": C_mod_values,
+            "eta_min_values": eta_min_values,
+            "scenario": scenario,
+            "material": material,
+            "c_ref": c_ref,
+            "measurement_points": list(self.measurement_points),
+        }
 
         # Figuren je Lauf frisch anlegen, damit Zoom/Pan-Zustände nicht übernommen werden
         self.cmod_figure = Figure(figsize=(6, 4))
@@ -1400,12 +1444,14 @@ class EFSAExtendedTab(QWidget):
                 self.cmod_figure,
                 summary,
                 offset=QPoint(40, 40),
+                kind="cmod",
             )
             self.eta_dialog = self._show_plot_dialog(
                 rf"EFSA Szenario {scenario} ({material}) - eta_min",
                 self.eta_figure,
                 summary,
                 offset=QPoint(420, 160),
+                kind="eta",
             )
 
     def _export_plots(self):
@@ -1426,7 +1472,7 @@ class EFSAExtendedTab(QWidget):
         except Exception as exc:
             self._set_error(f"Export fehlgeschlagen: {exc}")
 
-    def _show_plot_dialog(self, title: str, figure: Figure, summary_text: str, offset: QPoint):
+    def _show_plot_dialog(self, title: str, figure: Figure, summary_text: str, offset: QPoint, kind: str):
         if figure is None:
             return None
         dialog = QDialog(self)
@@ -1449,6 +1495,11 @@ class EFSAExtendedTab(QWidget):
         save_btn.setProperty("appStyle", False)
         save_btn.clicked.connect(lambda: self._save_current_figure(figure, title))
         button_row.addWidget(save_btn)
+        export_btn = QPushButton("CSV exportieren")
+        export_btn.setAutoDefault(False)
+        export_btn.setProperty("appStyle", False)
+        export_btn.clicked.connect(lambda: self._export_efsa_csv(kind))
+        button_row.addWidget(export_btn)
         layout.addLayout(button_row)
 
         dialog.resize(800, 600)
@@ -1473,6 +1524,63 @@ class EFSAExtendedTab(QWidget):
             figure.savefig(path)
         except Exception as exc:  # pylint: disable=broad-except
             self._set_error(f"Plot konnte nicht gespeichert werden: {exc}")
+
+    def _export_efsa_csv(self, kind: str) -> None:
+        if not self._last_efsa_data:
+            self._set_error("Keine EFSA-Ergebnisse verfügbar. Bitte zuerst berechnen.")
+            return
+        if kind not in ("cmod", "eta"):
+            self._set_error("Unbekannter Exporttyp.")
+            return
+
+        label_map = {
+            "cmod": ("C_mod (mg/kg)", "C_mod", "C_mod_values"),
+            "eta": ("eta_min (%)", "eta_min", "eta_min_values"),
+        }
+        value_label, measurement_key, data_key = label_map[kind]
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Ergebnisse exportieren",
+            "",
+            "CSV-Dateien (*.csv);;Alle Dateien (*)",
+        )
+        if not path:
+            return
+
+        def _fmt_decimal(val: float) -> str:
+            text = f"{val:.12f}".rstrip("0").rstrip(".")
+            return text.replace(".", ",")
+
+        data = self._last_efsa_data
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle, delimiter=";")
+                writer.writerow([
+                    "Material", data["material"],
+                    "Szenario", data["scenario"],
+                    "c_ref (mg/kg)", _fmt_decimal(float(data["c_ref"])),
+                ])
+                writer.writerow([])
+                writer.writerow(["M_r (g/mol)", value_label])
+                for mr, val in zip(data["M_r_values"], data[data_key]):
+                    writer.writerow([_fmt_decimal(float(mr)), _fmt_decimal(float(val))])
+
+                measurements = [
+                    p for p in data["measurement_points"]
+                    if p.get(measurement_key) is not None
+                ]
+                if measurements:
+                    writer.writerow([])
+                    writer.writerow(["Messwerte"])
+                    writer.writerow(["M_r (g/mol)", value_label])
+                    for point in measurements:
+                        writer.writerow([
+                            _fmt_decimal(float(point["Mr"])),
+                            _fmt_decimal(float(point[measurement_key])),
+                        ])
+        except Exception as exc:  # pylint: disable=broad-except
+            self._set_error(f"CSV-Export fehlgeschlagen: {exc}")
 
 
 class ParameterVariationTab(SingleLayerTab):
@@ -1531,7 +1639,7 @@ class ParameterVariationTab(SingleLayerTab):
         graph_section = QVBoxLayout()
         graph_section.setSpacing(6)
         graph_section.setContentsMargins(0, 0, 0, 0)
-        headline_label = QLabel("<b>Grafische Darstellung der Schichten</b>")
+        headline_label = QLabel("<b>Grafische Darstellung</b>")
         headline_label.setAlignment(Qt.AlignLeft)
         graph_section.addWidget(headline_label)
         graph_section.addWidget(self.graphics_view)

@@ -5,26 +5,26 @@
 from sl_model_functions import *
 # Physikalisch-chemische Eigenschaften
 M_r = 136            # relative Molekülmasse des Migranten [g/mol]
-T_C = 20             # Temperatur [°C]
-c_P0 = 661           # Anfangskonzentration im Polymer [mg/kg]
+T_C = 25             # Temperatur [°C]
+c_P0 = 100           # Anfangskonzentration im Polymer [mg/kg]
 Material = "LDPE"   # Material des Polymers [-]
-P_density = 0.9045    # Dichte des Polymers [g/cm^3]
+P_density = 1    # Dichte des Polymers [g/cm^3]
 F_density = 0.9      # Dichte des Fluids [g/cm^3]
-D_P_known = 1e-10     # Diffusionskoeffizient des Polymers, falls bekannt [cm^2/s]
+D_P_known = None     # Diffusionskoeffizient des Polymers, falls bekannt [cm^2/s]
 K_PF = 1             # Verteilungskoeffizient [-]
-t_max = 3600 * 24 * 28   # Simulationszeit [s]
+t_max = 3600 * 24 * 10   # Simulationszeit [s]
 
 # Geometrische Größen
-# d_P = 0.2            # Durchmesser des Polymers [cm]
-# d_F = 1.85           # Durchmesser des Fluids [cm]
-# V_P = None           # Volumen des Polymers [cm^3]
-# V_F = None           # Volumen des Fluids [cm^3]
-# A_PF = 6             # Kontaktfläche Polymer/Fluid [dm^2]
-A_PF = 0.2827             # Kontaktfläche Polymer/Fluid [dm^2] (MigraCell 60)
-V_P = 10.6384    # Volumen des Polymers [cm^3] (von Andre)
-V_F = 28.27    # Volumen des Fluids [cm^3] (von Andre)
-d_P = V_P / A_PF            # Durchmesser des Polymers [cm]
-d_F = V_F / A_PF           # Durchmesser des Fluids [cm]
+d_P = 0.2            # Durchmesser des Polymers [cm]
+d_F = 2           # Durchmesser des Fluids [cm]
+V_P = None           # Volumen des Polymers [cm^3]
+V_F = None           # Volumen des Fluids [cm^3]
+A_PF = 6             # Kontaktfläche Polymer/Fluid [dm^2]
+# A_PF = 0.2827             # Kontaktfläche Polymer/Fluid [dm^2] (MigraCell 60)
+# V_P = 10.6384    # Volumen des Polymers [cm^3] (von Andre)
+# V_F = 28.27    # Volumen des Fluids [cm^3] (von Andre)
+# d_P = V_P / A_PF            # Durchmesser des Polymers [cm]
+# d_F = V_F / A_PF           # Durchmesser des Fluids [cm]
 
 # Case
 simulation_case = "worst"
@@ -52,5 +52,4 @@ if not os.path.exists(full_path):
 # np.save(os.path.join(full_path, 'results_area.np'), results_area)
 
 # Plotten der Ergebnisse
-# plot_results_area(results_area, t_max, dt, save_path=full_path)
-plot_results_area(results_area, t_max, dt, save_path=full_path)
+plot_results_area(results_area, t_max, dt, save_path=None)

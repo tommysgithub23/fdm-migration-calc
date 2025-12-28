@@ -588,6 +588,7 @@ def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path
     plt.ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     
     if threshold_index != 0:
         plt.legend(fontsize=14)

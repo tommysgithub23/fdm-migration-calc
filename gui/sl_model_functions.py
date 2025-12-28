@@ -22,7 +22,6 @@ def get_material_data(material, simulation_case="worst"):
         "LDPE": {"A_Pt": 11.7, "tau": 0},
         "HDPE": {"A_Pt": 13.2, "tau": 1577},
         "LLDPE": {"A_Pt": 11.5, "tau": 0},
-        "PP": {"A_Pt": 12.4, "tau": 1577},
         "PET": {"A_Pt": 6.35, "tau": 1577},
         "PS": {"A_Pt": -0.7, "tau": 0},
         "PEN": {"A_Pt": 3.7, "tau": 1577},
@@ -72,7 +71,7 @@ def diffusion_coefficient_Piringer(M_r, T_C, material_params):
     D_0 = 1e4  # D_0 nach Piringer Modell
 
     if M_r <= 4000:
-        D_P =  D_0 * np.exp(A_P - 0.1351 * M_r**(2 / 3) + 0.003 * M_r - (10454 * R / (R * T)))
+        D_P =  D_0 * np.exp(A_P - 0.1351 * M_r**(2 / 3) + 0.003 * M_r - (E_A / (R * T)))
     else:
         raise ValueError("M_r über 4000 Dalton, andere Berechnung von D_P nötig!")
     
@@ -182,6 +181,8 @@ def migrationsmodell_piringer(M_r, T_C, c_P0, Material, P_density, F_density, K_
         current_time += dt
         
     migration_data = np.array(migration_data) / 10 # Umrechnung in [mg/dm²]
+    # if migration_data.size:
+    #     migration_data = migration_data - migration_data[0]
 
     return migration_data
 
@@ -324,6 +325,15 @@ def plot_migration_surface_over_parameter(
         figure.clear()
 
     ax = figure.add_subplot(111, projection='3d')
+    # --- transparente Hintergrundflächen (Panes) ---
+    ax.xaxis.pane.set_facecolor((1.0, 1.0, 1.0, 0.0))
+    ax.yaxis.pane.set_facecolor((1.0, 1.0, 1.0, 0.0))
+    ax.zaxis.pane.set_facecolor((1.0, 1.0, 1.0, 0.0))
+
+    # Optional: Kanten der Panes ausblenden
+    ax.xaxis.pane.set_edgecolor("w")
+    ax.yaxis.pane.set_edgecolor("w")
+    ax.zaxis.pane.set_edgecolor("w")
     surf = ax.plot_trisurf(param_axis, time_axis, migration_axis, cmap=cm.viridis, linewidth=0.2)
 
     def _format_param_label(name: str, unit: str | None = None) -> str:
@@ -351,10 +361,19 @@ def plot_migration_surface_over_parameter(
     }
     unit = unit_map.get(param_name)
 
-    ax.set_xlabel(_format_param_label(param_name, unit), fontsize=12)
-    ax.set_ylabel('Zeit [Tage]', fontsize=12)
-    ax.set_zlabel('Migration [mg/dm²]', fontsize=12)
-    figure.colorbar(surf, shrink=0.5, aspect=5, pad=0.1)
+    # --- Grid aktivieren ---
+    ax.grid(True)
+
+    # --- Grid-Stil setzen ---
+    for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+        axis._axinfo["grid"]["linestyle"] = "--"
+        axis._axinfo["grid"]["linewidth"] = 0.6
+        axis._axinfo["grid"]["color"] = (0.6, 0.6, 0.6, 0.6)  # leicht transparent
+
+    ax.set_xlabel(_format_param_label(param_name, unit), fontsize=10)
+    ax.set_ylabel('Zeit [Tage]', fontsize=10)
+    ax.set_zlabel('spez. Migrationsmenge [mg/dm²]', fontsize=10)
+    figure.colorbar(surf, shrink=0.45, aspect=5, pad=0.1)
     figure.tight_layout()
 
     if created_figure and show:

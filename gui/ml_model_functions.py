@@ -414,6 +414,44 @@ def calculate_migrated_mass_over_time(C_values, x, layers, tabler, calc_interval
     
     return migrated_mass_over_time, time_points
 
+def calculate_migrated_mass_over_time_by_layer(C_values, x, layers, tabler, calc_interval):
+    """
+    Berechnet die migrierte Masse je Schicht über die Zeit.
+
+    Parameter:
+        C_values (list von np.ndarray): Konzentrationsprofile über die Zeit.
+        x (np.ndarray): Räumliches Gitter.
+        layers (list von Layer): Liste der Schichtobjekte.
+        tabler (float): Zeitschrittgröße [s].
+        calc_interval (int): Intervall der Berechnung.
+
+    Rückgabe:
+        tuple:
+            - migrated_masses_by_layer (list von np.ndarray): Liste je Schicht mit migrierter Masse über die Zeit.
+            - time_points (list): Liste der Zeitpunkte [s].
+    """
+    layer_spans = []
+    start_idx = 0
+    for layer in layers:
+        end_idx = start_idx + layer.nx
+        layer_spans.append((start_idx, end_idx, layer))
+        start_idx = end_idx
+
+    migrated_masses_by_layer = [[] for _ in layers]
+    time_points = []
+
+    for i in range(0, len(C_values), calc_interval):
+        time_points.append(i * tabler)
+        C_snapshot = C_values[i]
+        for idx, (start_idx, end_idx, layer) in enumerate(layer_spans):
+            C_layer = C_snapshot[start_idx:end_idx]
+            x_layer = x[start_idx:end_idx]
+            concentration_integral = np.trapz(C_layer, x_layer)
+            migrated_masses_by_layer[idx].append(concentration_integral * (layer.density / 10))
+
+    migrated_masses_by_layer = [np.array(values) for values in migrated_masses_by_layer]
+    return migrated_masses_by_layer, time_points
+
 def plot_results(C_values, C_init, x, layers, tabler,
                  log_scale=False, steps_to_plot=10, save_path=None, show=True):
     """
@@ -567,7 +605,7 @@ def plot_mass_conservation(total_masses, total_mass_init, t_max, Nt, plot_interv
     plt.show()
 
 
-def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path=None, show=True):
+def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path=None, show=True, threshold=None):
     """
     Plottet die spezifische Migrationsmenge im Verlauf der Zeit.
     
@@ -575,6 +613,7 @@ def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path
         migrated_mass_over_time (list): Liste der migrierten Massen.
         time_points (list): Zeitschritte der Simulation [s].
         save_path (str, optional): Verzeichnis, in dem der Plot gespeichert wird.
+        threshold (float, optional): Grenzwert für die Migrationsmenge in mg/dm^2.
     """
     # Konvertiere Zeitpunkte in Tage
     time_points_days = np.array(time_points) / (3600 * 24)
@@ -583,19 +622,29 @@ def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(time_points_days, migrated_mass_over_time, linewidth=2, color='#F06D1D')
 
-    # Finde den Punkt, an dem die migrierte Masse einen bestimmten Schwellenwert überschreitet
-    threshold_index = np.argmax(migrated_mass_over_time > 1e-5)
-    if migrated_mass_over_time[threshold_index] > 1e-5 and threshold_index != 0:
-        threshold_time = time_points_days[threshold_index]
-        ax.axvline(x=threshold_time, color='black', linestyle='--', label=f'$m_{{F}}(t)/A_{{P,F}} > 10^{{-5}} mg/dm^2$ nach {threshold_time:.2f} Tagen')
+    if threshold is not None:
+        # Finde den Punkt, an dem die migrierte Masse den Grenzwert überschreitet
+        threshold_index = np.argmax(migrated_mass_over_time > threshold)
+        if migrated_mass_over_time[threshold_index] > threshold and threshold_index != 0:
+            threshold_time = time_points_days[threshold_index]
+            ax.axvline(
+                x=threshold_time,
+                color='black',
+                linestyle='--',
+                label=(
+                    f'$m_{{F}}(t)/A_{{P,F}} > {threshold:.3g} mg/dm^2$ '
+                    f'nach {threshold_time:.2f} Tagen'
+                ),
+            )
 
     # Achsenbeschriftungen und Titel
-    ax.set_xlabel('Zeit $[Tage]$', fontsize=14)
-    ax.set_ylabel('spez. Migrationsmenge $[mg/dm^2]$', fontsize=14)
-    ax.tick_params(labelsize=14)
+    ax.set_xlabel('Zeit [Tage]', fontsize=12)
+    ax.set_ylabel('spez. Migrationsmenge [mg/dm²]', fontsize=12)
+    ax.tick_params(labelsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.7, alpha=0.7)
     
-    if threshold_index != 0:
-        ax.legend(fontsize=14)
+    if threshold is not None and threshold_index != 0:
+        ax.legend(fontsize=12)
 
     # Plot speichern, wenn ein Pfad angegeben wurde
     if save_path:
@@ -603,6 +652,63 @@ def plot_migrated_mass_over_time(migrated_mass_over_time, time_points, save_path
         fig.savefig(plot_filename, bbox_inches='tight')
         print(f"Migrationsplot gespeichert unter: {plot_filename}")
     
+    if show:
+        plt.show()
+
+    return fig
+
+
+def plot_migrated_mass_over_time_by_layer(migrated_masses_by_layer, time_points, layers, save_path=None, show=True):
+    """
+    Plottet die spezifische Migrationsmenge pro Schicht im Verlauf der Zeit.
+
+    Parameter:
+        migrated_masses_by_layer (list von np.ndarray): Liste je Schicht mit migrierter Masse über die Zeit.
+        time_points (list): Zeitschritte der Simulation [s].
+        layers (list von Layer): Liste der Schichten.
+        save_path (str, optional): Verzeichnis, in dem der Plot gespeichert wird.
+    """
+    time_points_days = np.array(time_points) / (3600 * 24)
+    layer_count = len(layers)
+    cols = 2 if layer_count > 1 else 1
+    rows = int(np.ceil(layer_count / cols))
+
+    colors = {
+        "LDPE": "#f16d1d",
+        "LLDPE": "#f16d1d",
+        "HDPE": "#32c864",
+        "PP": "#c832ee",
+        "PET": "#646464",
+        "Kontaktphase": "#64e6df",
+        "PS": "#8c564b",
+        "PEN": "#e377c2",
+        "HIPS": "#7f7f7f",
+    }
+
+    fig, axes = plt.subplots(rows, cols, figsize=(10, 4 * rows))
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([[axes]])
+    axes = axes.reshape(rows, cols)
+
+    for idx, layer in enumerate(layers):
+        ax = axes[idx // cols][idx % cols]
+        color = colors.get(layer.material, "#F06D1D")
+        ax.plot(time_points_days, migrated_masses_by_layer[idx], linewidth=2, color=color)
+        ax.set_title(f"{layer.material} (d={layer.d:g} cm)", fontsize=11)
+        ax.set_xlabel("Zeit [Tage]", fontsize=10)
+        ax.set_ylabel("spez. Migrationsmenge [mg/dm²]", fontsize=10)
+        ax.grid(True, which="both", linestyle="--", linewidth=0.7, alpha=0.7)
+
+    for j in range(layer_count, rows * cols):
+        axes[j // cols][j % cols].set_visible(False)
+
+    fig.tight_layout(pad=3.0, h_pad=3.0, w_pad=1.5)
+
+    if save_path:
+        plot_filename = os.path.join(save_path, "migrated_mass_by_layer_plot.pdf")
+        fig.savefig(plot_filename, bbox_inches="tight")
+        print(f"Migrationsplot gespeichert unter: {plot_filename}")
+
     if show:
         plt.show()
 
