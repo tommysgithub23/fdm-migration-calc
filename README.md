@@ -53,6 +53,3 @@ pyinstaller --noconfirm --clean fdm_migration.spec
 
 3) Ergebnis:
 - `dist\FDM-Migration\FDM-Migration.exe`
-
-Hinweis:
-- Wenn du zur Laufzeit auf externe Dateien zugreifen willst (z. B. `data/`), musst du diese als `datas` in der Spec mitgeben oder neben die EXE legen.
