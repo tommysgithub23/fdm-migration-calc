@@ -3,46 +3,56 @@ Dieses Projekt umfasst zwei Modelle zur Berechnung der Migration von Additiven i
 
 ## Inhaltsverzeichnis
 - [Überblick](#überblick)
-- [Installation](#installation)
-- [Verwendung](#verwendung)
-- [SL-Modell](#sl-modell)
-- [ML-Modell](#ml-modell)
+- [Voraussetzungen](#voraussetzungen)
+- [Installation unter Windows](#installation-unter-windows)
+- [Anwendung starten](#anwendung-starten)
+- [EXE-Build (One-Folder) unter Windows](#exe-build-one-folder-unter-windows)
 
 ## Überblick
-
 Das **SL-Modell** (Single-Layer) simuliert die Migration von Substanzen aus einer einzigen Polymerschicht in Kontakt mit einem Medium, während das **ML-Modell** (Multi-Layer) den Einfluss mehrerer Schichten auf die Migration untersucht. Beide Modelle berücksichtigen Diffusionsprozesse und thermodynamische Parameter und verwenden numerische Methoden, um die Migrationsprozesse über die Zeit zu analysieren.
 
-## Installation
+## Voraussetzungen
+- Windows 10/11
+- Python 3.10+ (empfohlen: aktuelles Python 3.x)
+- Git (optional, für das Klonen des Repos)
 
-1. Python 3.x ist erforderlich.
-2. Klone dieses Repository und installiere die notwendigen Abhängigkeiten:
+## Installation unter Windows
+1) Repository klonen oder als ZIP herunterladen.
+2) Ordner öffnen und eine virtuelle Umgebung erstellen:
 
-   ```bash
-   git clone <repository-url>
-   cd <repository>
-   pip install -r requirements.txt
+```bash
+python -m venv .venv
+```
 
-## Verwendung
+3) Virtuelle Umgebung aktivieren:
 
-### SL-Modell
+```bash
+.venv\Scripts\activate
+```
 
-1. Navigiere zum Verzeichnis `sl_model/`.
-2. Öffne die Datei `sl_model.ipynb` in Jupyter Notebook.
-3. Führe die Zellen aus, um die Simulation für das SL-Modell durchzuführen.
+4) Abhängigkeiten installieren:
 
-   Beispiel:
+```bash
+pip install -r requirements.txt
+```
 
-   ```bash
-   jupyter notebook sl_model.ipynb
+## Anwendung starten
+```bash
+python gui\main.py
+```
 
-### ML-Modell
+## EXE-Build (One-Folder) unter Windows
+Wichtig: Der Build muss auf Windows erfolgen (PyInstaller cross-compiliert nicht zuverlässig von macOS/Linux).
 
-1. Navigiere zum Verzeichnis `ml_model/`.
-2. Öffne die Datei `ml_model.ipynb` in Jupyter Notebook.
-3. Führe die Zellen aus, um die Simulation für das SL-Modell durchzuführen.
+1) Stelle sicher, dass die venv aktiv ist und die Abhängigkeiten installiert sind.
+2) Build starten:
 
-   Beispiel:
+```bash
+pyinstaller --noconfirm --clean fdm_migration.spec
+```
 
-   ```bash
-   jupyter notebook ml_model.ipynb
+3) Ergebnis:
+- `dist\FDM-Migration\FDM-Migration.exe`
 
+Hinweis:
+- Wenn du zur Laufzeit auf externe Dateien zugreifen willst (z. B. `data/`), musst du diese als `datas` in der Spec mitgeben oder neben die EXE legen.
