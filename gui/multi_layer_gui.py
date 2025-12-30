@@ -56,11 +56,17 @@ class MultiLayerTab(QWidget):
         self.threshold_input.setFixedHeight(25)
         self.threshold_input.setFixedWidth(self.input_width)
         self.threshold_input.setAlignment(Qt.AlignRight)
+        self.sim_case_dropdown = QComboBox()
+        self.sim_case_dropdown.addItems(["worst", "best"])
         self.tooltip_helper.register(self.T_C_input, "Temperatur der Simulation in °C.")
         self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten in g/mol.")
         self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation in Tagen (wird in Sekunden umgerechnet).")
         self.tooltip_helper.register(self.dt_input, "Zeitschrittgröße in Sekunden.")
         self.tooltip_helper.register(self.d_nx_input, "Verhältnis von Schichtdicke zu räumlicher Diskretisierung d/nₓ in cm.")
+        self.tooltip_helper.register(
+            self.sim_case_dropdown,
+            "Bestimmt, ob mit Worst-Case- oder Best-Case-Annahmen gerechnet wird (Diffusionskoeffizient nach Piringer).",
+        )
         self.tooltip_helper.register(self.threshold_checkbox, "Grenzwertlinie im Migrationsplot aktivieren.")
         self.tooltip_helper.register(self.threshold_input, "Grenzwert für die Migrationsmenge in mg/dm².")
 
@@ -103,6 +109,7 @@ class MultiLayerTab(QWidget):
         threshold_container.setLayout(threshold_row)
         self.input_layout.addWidget(threshold_container)
         self.input_layout.setAlignment(Qt.AlignLeft)  # Links-Ausrichtung für den gesamten Eingabebereich
+        self.input_layout.addWidget(self._create_labeled_row("Simulation Case", "", self.sim_case_dropdown))
         self.input_layout.setSpacing(6)
 
         left_column = QVBoxLayout()
@@ -588,6 +595,7 @@ class MultiLayerTab(QWidget):
         # 3) Parameter auslesen
         M_r  = float(self.M_r_input.text())
         T_C  = float(self.T_C_input.text())
+        simulation_case = self.sim_case_dropdown.currentText()
         # t_max wird in Tagen eingegeben → in Sekunden umrechnen
         t_max_days = float(self.t_max_input.text())
         t_max = t_max_days * 24 * 3600
@@ -603,7 +611,7 @@ class MultiLayerTab(QWidget):
             C_init  = float(self.layer_table.item(row, 4).text())
             density = float(self.layer_table.item(row, 5).text())
             layer = Layer(material, d, nx, K_val, C_init, density=density)       # :contentReference[oaicite:3]{index=3}
-            layer.set_diffusion_coefficient(M_r, T_C)            # :contentReference[oaicite:4]{index=4}
+            layer.set_diffusion_coefficient(M_r, T_C, simulation_case=simulation_case)  # :contentReference[oaicite:4]{index=4}
             layers.append(layer)
 
         C_values, C_init, total_masses, x, partitioning = run_simulation(layers, t_max, dt)  # :contentReference[oaicite:5]{index=5}&#8203;:contentReference[oaicite:6]{index=6}

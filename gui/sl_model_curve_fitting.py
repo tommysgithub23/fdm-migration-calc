@@ -4,6 +4,7 @@ import pandas as pd
 import os
 
 def calculate_migration_timestep(D_P, c_t, P_density, K_PF, t_step, V_P, V_F, d_P, d_F, A_PF):
+    
     alpha = (1 / K_PF) * (V_F / V_P)
     upper_alpha = 10
 
@@ -45,7 +46,7 @@ def calculate_migration_timestep(D_P, c_t, P_density, K_PF, t_step, V_P, V_F, d_
     return migration_amount
 
 def migrationsmodell_piringer_for_curve_fitting(c_P0, P_density, K_PF, t_max, V_P, V_F, d_P, d_F, A_PF, dt, D_P_known):
-
+    
     D_P = D_P_known
 
     migration_data = []

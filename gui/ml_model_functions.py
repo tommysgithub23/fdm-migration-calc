@@ -21,7 +21,7 @@ class Layer:
             D (float, optional): Diffusionskoeffizient der Schicht in cm²/s, falls explizit angegeben. Ansonsten wird er über die Piringer Gleichung berechnet.
 
         Methoden:
-            set_diffusion_coefficient(M_r, T_C): Berechnet und setzt den Diffusionskoeffizienten nach Piringer basierend auf der relativen Molekülmasse des Migranten und der Temperatur.
+            set_diffusion_coefficient(M_r, T_C, simulation_case): Berechnet und setzt den Diffusionskoeffizienten nach Piringer basierend auf der relativen Molekülmasse des Migranten, der Temperatur und dem Simulationsfall.
         """
 
         self.material = material
@@ -32,36 +32,38 @@ class Layer:
         self.density = density
         self.D = D  # Falls kein Diffusionskoeffizient übergeben wurde, wird er mit der Piringer Gleichung berechnet
 
-    def set_diffusion_coefficient(self, M_r, T_C):
+    def set_diffusion_coefficient(self, M_r, T_C, simulation_case="worst"):
         """
         Berechnet und setzt den Diffusionskoeffizienten für die Schicht, falls nicht manuell angegeben.
         
         Parameter:
             M_r (float): rel. Molekülmasse des Migranten [g/mol].
             T_C (float): Temperatur [°C].
+            simulation_case (str): Simulationsfall ('worst' oder 'best').
         """
         if self.D is None: 
             if self.material == 'Kontaktphase':
                 self.D = 1e-2  # Nach EU-Verordnung für durchmischte Kontaktphase
             else:
-                material_params = get_material_data(self.material)
+                material_params = get_material_data(self.material, simulation_case)
                 self.D = diffusion_coefficient_Piringer(M_r, T_C, material_params)
 
-def get_material_data(material):
+def get_material_data(material, simulation_case="worst"):
     """
     Gibt die materialbezogenen Parameter für die Berechnung des Diffusionskoeffizienten zurück.
 
     Parameter:
         material (str): Name des Materials.
+        simulation_case (str): Simulationsfall, entweder 'worst' (Standard) oder 'best'.
 
     Rückgabe:
         dict: Ein Dictionary, das die Parameter 'A_Pt' und 'tau' für das angegebene Material enthält.
 
     Raises:
-        ValueError: Wenn das angegebene Material nicht in der Liste der bekannten Materialien enthalten ist.
+        ValueError: Wenn das Material oder der Simulationsfall unbekannt ist.
     """
 
-    material_parameters = {
+    material_parameters_worst_case = {
         "LDPE": {"A_Pt": 11.7, "tau": 0},
         "LLDPE": {"A_Pt": 9.8, "tau": 0}, # für Validierung
         "HDPE": {"A_Pt": 13.2, "tau": 1577},
@@ -72,10 +74,25 @@ def get_material_data(material):
         "HIPS": {"A_Pt": 0.1, "tau": 0}
     }
 
-    if material in material_parameters:
-        return material_parameters[material]
-    else:
-        raise ValueError(f"Unbekanntes Material: {material}")
+    material_parameters_best_case = {
+        "LDPE": {"A_Pt": 10.0, "tau": 0},
+        "LLDPE": {"A_Pt": 9.8, "tau": 0},
+        "HDPE": {"A_Pt": 10.0, "tau": 1577},
+        "PP": {"A_Pt": 9.4, "tau": 1577},
+        "PET": {"A_Pt": 2.2, "tau": 1577},
+        "PS": {"A_Pt": -2.8, "tau": 0},
+        "PEN": {"A_Pt": -0.34, "tau": 1577},
+        "HIPS": {"A_Pt": -2.7, "tau": 0}
+    }
+
+    if simulation_case == "worst":
+        if material in material_parameters_worst_case:
+            return material_parameters_worst_case[material]
+    elif simulation_case == "best":
+        if material in material_parameters_best_case:
+            return material_parameters_best_case[material]
+
+    raise ValueError("Unbekanntes Material oder Simulation Case")
 
 def diffusion_coefficient_Piringer(M_r, T_C, material_params):
     """

@@ -1,4 +1,7 @@
-from sl_model_functions import *
+try:
+    from .sl_model_functions import *
+except ImportError:
+    from sl_model_functions import *
 
 
 def calculate_sum_term_at_t(D_P, rho_P, K_PF, t, d_P, d_F):

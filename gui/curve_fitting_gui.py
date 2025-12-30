@@ -77,14 +77,14 @@ class CurveFittingTab(QWidget):
 
         self.surrogate_input = QLineEdit()
         self.temperature_input = QLineEdit("20")
-        self.c_p0_input = QLineEdit("820")
+        self.c_p0_input = QLineEdit("10")
         self.p_density_input = QLineEdit("0.9045")
         self.f_density_input = QLineEdit("0.9")
         self.k_pf_input = QLineEdit("1")
         self.v_p_input = QLineEdit("10.6384")
         self.v_f_input = QLineEdit("28.27")
         self.a_pf_input = QLineEdit("0.2827")
-        self.dt_input = QLineEdit("3600")
+        self.dt_input = QLineEdit("100")
 
         self._configure_line_edit(self.surrogate_input, align_left=True)
         for fld in (

@@ -138,6 +138,8 @@ class SingleLayerTab(QWidget):
         # Add input fields
         self.T_C_input = QLineEdit("25")
         self.t_max_input = QLineEdit("864000") # 10 Tage in Sekunden
+        self.t_max_unit_dropdown = QComboBox()
+        self.t_max_unit_dropdown.addItems(["s", "h", "d"])
         self.M_r_input = QLineEdit("136")
         self.c_P0_input = QLineEdit("100")
         self.P_density_input = QLineEdit("1")
@@ -167,9 +169,16 @@ class SingleLayerTab(QWidget):
             input_field.setFixedWidth(self.input_width)
             input_field.setFixedHeight(24)
             input_field.setAlignment(Qt.AlignRight)  # Text im Eingabefeld rechts ausrichten
+        self.t_max_unit_dropdown.setFixedHeight(24)
+        self.t_max_unit_dropdown.setFixedWidth(55)
+        self.t_max_unit_dropdown.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
 
         self.tooltip_helper.register(self.T_C_input, "Temperatur in °C.")
-        self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation.")
+        self.tooltip_helper.register(self.t_max_input, "Gesamtdauer der Simulation in der gewählten Einheit.")
+        self.tooltip_helper.register(
+            self.t_max_unit_dropdown,
+            "Einheit fuer t_max: Sekunden (s), Stunden (h) oder Tage (d).",
+        )
         self.tooltip_helper.register(self.dt_input, "Zeitschritt der Simulation.")
         self.tooltip_helper.register(self.M_r_input, "Relative Molekülmasse des Migranten.")
         self.tooltip_helper.register(self.c_P0_input, "Anfangskonzentration des Migranten im Polymer.")
@@ -182,7 +191,9 @@ class SingleLayerTab(QWidget):
         inputs_layout.addWidget(self._create_labeled_row("Material", "", self.material_dropdown))
         # Other rows of the form
         inputs_layout.addWidget(self._create_labeled_row("T<sub>C</sub>", "°C", self.T_C_input))
-        inputs_layout.addWidget(self._create_labeled_row("t<sub>max</sub>", "s", self.t_max_input))
+        t_max_row = self._create_labeled_row("t<sub>max</sub>", "", self.t_max_input)
+        t_max_row.layout().insertWidget(2, self.t_max_unit_dropdown)
+        inputs_layout.addWidget(t_max_row)
         inputs_layout.addWidget(self._create_labeled_row("Δt", "s", self.dt_input))
         inputs_layout.addWidget(self._create_labeled_row("M<sub>r</sub>", "g/mol", self.M_r_input))
         inputs_layout.addWidget(self._create_labeled_row("c<sub>P0</sub>", "mg/kg", self.c_P0_input))
@@ -438,9 +449,11 @@ class SingleLayerTab(QWidget):
         Material = self.material_dropdown.currentText()
         P_density = float(self.P_density_input.text())
         F_density = float(self.F_density_input.text())
-        D_P_known = None if not self.D_P_known_input.text() else float(self.D_P_known_input.text())
+        D_P_known = None
+        if self.D_P_checkbox.isChecked() and self.D_P_known_input.text().strip():
+            D_P_known = float(self.D_P_known_input.text())
         K_PF = float(self.K_PF_input.text())
-        t_max = float(self.t_max_input.text())
+        t_max = self._get_t_max_seconds()
         d_P = float(self.d_P_input.text())
         V_P = float(self.V_P_input.text())
         d_F = float(self.d_F_input.text())
@@ -521,6 +534,15 @@ class SingleLayerTab(QWidget):
         }
 
         plot_migration_surface_over_parameter(parameter, param_range, fixed_params)
+
+    def _get_t_max_seconds(self) -> float:
+        t_max_value = float(self.t_max_input.text())
+        unit = self.t_max_unit_dropdown.currentText()
+        if unit == "h":
+            return t_max_value * 3600.0
+        if unit == "d":
+            return t_max_value * 86400.0
+        return t_max_value
 
     def update_graphics(self):
         """Aktualisiert die Breite, Farbe und Position der Rechtecke basierend auf Eingaben."""
@@ -658,9 +680,11 @@ class SingleLayerTab(QWidget):
         Material = self.material_dropdown.currentText()
         P_density = float(self.P_density_input.text())
         F_density = float(self.F_density_input.text())
-        D_P_known = None if not self.D_P_known_input.text() else float(self.D_P_known_input.text())
+        D_P_known = None
+        if self.D_P_checkbox.isChecked() and self.D_P_known_input.text().strip():
+            D_P_known = float(self.D_P_known_input.text())
         K_PF = float(self.K_PF_input.text())
-        t_max = float(self.t_max_input.text())
+        t_max = self._get_t_max_seconds()
         d_P = float(self.d_P_input.text())
         V_P = float(self.V_P_input.text())
         d_F = float(self.d_F_input.text())
@@ -1883,14 +1907,18 @@ class ParameterVariationTab(SingleLayerTab):
             "P_density": float(self.P_density_input.text()),
             "F_density": float(self.F_density_input.text()),
             "K_PF": float(self.K_PF_input.text()),
-            "t_max": float(self.t_max_input.text()),
+            "t_max": self._get_t_max_seconds(),
             "V_P": float(self.V_P_input.text()),
             "V_F": float(self.V_F_input.text()),
             "d_P": float(self.d_P_input.text()),
             "d_F": float(self.d_F_input.text()),
             "A_PF": float(self.A_PF_input.text()),
             "dt": float(self.dt_input.text()),
-            "D_P_known": None if not self.D_P_known_input.text() else float(self.D_P_known_input.text()),
+            "D_P_known": (
+                float(self.D_P_known_input.text())
+                if self.D_P_checkbox.isChecked() and self.D_P_known_input.text().strip()
+                else None
+            ),
             "simulation_case": self.sim_case_dropdown.currentText(),
         }
 

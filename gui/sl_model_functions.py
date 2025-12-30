@@ -179,8 +179,9 @@ def migrationsmodell_piringer(M_r, T_C, c_P0, Material, P_density, F_density, K_
         migration_amount = calculate_migration_timestep(D_P, c_P0, P_density, F_density, K_PF, current_time, V_P, V_F, d_P, d_F, A_PF)
         migration_data.append(migration_amount)
         current_time += dt
-        
-    migration_data = np.array(migration_data) / 10 # Umrechnung in [mg/dm²]
+
+    migration_data = (np.array(migration_data) - migration_data[0]) / 10  # Umrechnung in [mg/dm²] und Normierung auf 0    
+    # migration_data = np.array(migration_data) / 10 # Umrechnung in [mg/dm²]
     # if migration_data.size:
     #     migration_data = migration_data - migration_data[0]
 
